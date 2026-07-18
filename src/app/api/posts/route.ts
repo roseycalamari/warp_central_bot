@@ -131,6 +131,14 @@ export async function PATCH(req: NextRequest) {
   if (body.retry === true) {
     data.status = "scheduled";
     data.error = null;
+    if (!body.scheduledAt) {
+      data.scheduledAt = new Date();
+    }
+  }
+  if (body.unschedule === true) {
+    data.scheduledAt = null;
+    data.status = "draft";
+    data.error = null;
   }
 
   const post = await prisma.post.update({ where: { id }, data });
@@ -140,6 +148,30 @@ export async function PATCH(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
+  const status = searchParams.get("status");
+
+  // Bulk delete failed / draft posts to free Blob storage
+  if (!id && (status === "failed" || status === "draft" || status === "cleanup")) {
+    const statuses =
+      status === "cleanup" ? ["failed", "draft"] : [status];
+    const posts = await prisma.post.findMany({
+      where: { status: { in: statuses } },
+    });
+
+    let deleted = 0;
+    for (const post of posts) {
+      try {
+        await del(post.imageUrl);
+      } catch {
+        // ignore
+      }
+      await prisma.post.delete({ where: { id: post.id } });
+      deleted += 1;
+    }
+
+    return NextResponse.json({ ok: true, deleted });
+  }
+
   if (!id) {
     return NextResponse.json({ error: "id required" }, { status: 400 });
   }

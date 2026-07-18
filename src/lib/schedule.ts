@@ -34,10 +34,11 @@ export function buildDaySchedule(opts: {
 
 export function staggerFromNow(count: number, everyMinutes = 45): Date[] {
   const now = new Date();
-  // First post at least 2 minutes from now so the worker can pick it up
-  const first = addMinutes(now, 2);
+  // First post ~1 minute from now (or click "post now" for immediate)
+  const first = addMinutes(now, 1);
   first.setSeconds(0, 0);
+  const step = Math.max(1, everyMinutes);
   return Array.from({ length: count }, (_, i) =>
-    addMinutes(first, i * everyMinutes),
+    addMinutes(first, i * step),
   );
 }

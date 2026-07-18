@@ -47,10 +47,11 @@ export default function HomePage() {
   const [endHour, setEndHour] = useState(21);
   const [everyMinutes, setEveryMinutes] = useState(45);
   const [files, setFiles] = useState<FileList | null>(null);
-  const [filter, setFilter] = useState<"all" | "scheduled" | "posted" | "failed">(
-    "all",
-  );
+  const [filter, setFilter] = useState<
+    "all" | "scheduled" | "draft" | "posted" | "failed"
+  >("all");
   const [theme, setTheme] = useState<Theme>("dark");
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   useEffect(() => {
     const current =
@@ -95,6 +96,67 @@ export default function HomePage() {
     }
     return counts;
   }, [posts]);
+
+  async function unschedulePost(id: string) {
+    setBusyId(id);
+    try {
+      await fetch("/api/posts", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, unschedule: true }),
+      });
+      await load();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function postNow(id: string) {
+    setBusyId(id);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/publish/one", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.ok === false) {
+        throw new Error(data.error || "Publish failed");
+      }
+      setMessage("ok: posted to Instagram now");
+      await load();
+    } catch (err) {
+      setMessage(
+        `error: ${err instanceof Error ? err.message : "Publish failed"}`,
+      );
+      await load();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function cleanupFailedAndDrafts() {
+    if (
+      !confirm(
+        "Delete all failed + draft posts and their cloud images? This frees Blob storage.",
+      )
+    ) {
+      return;
+    }
+    setMessage(null);
+    try {
+      const res = await fetch("/api/posts?status=cleanup", { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Cleanup failed");
+      setMessage(`ok: deleted ${data.deleted} post(s) and freed cloud space`);
+      await load();
+    } catch (err) {
+      setMessage(
+        `error: ${err instanceof Error ? err.message : "Cleanup failed"}`,
+      );
+    }
+  }
 
   const visible = useMemo(() => {
     if (filter === "all") return posts;
@@ -170,7 +232,9 @@ export default function HomePage() {
   }
 
   async function deletePost(id: string) {
-    if (!confirm("Remove this post from the queue?")) return;
+    if (!confirm("Delete this post and its cloud image? Frees Blob storage.")) {
+      return;
+    }
     await fetch(`/api/posts?id=${id}`, { method: "DELETE" });
     await load();
   }
@@ -285,8 +349,9 @@ export default function HomePage() {
               {mode === "bulk_day" && (
                 <>
                   <p className="border border-[var(--line)] bg-[var(--bg)] px-3 py-2 text-xs leading-relaxed text-[var(--muted)]">
-                    Spaces your photos evenly across one day — e.g. 20 photos
-                    from 9:00 to 21:00. Best for a full content day.
+                    Spaces whatever you selected evenly across one day — upload
+                    12 photos → 12 slots, upload 20 → 20 slots. Number of posts =
+                    number of images you pick.
                   </p>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                     <Field label="day">
@@ -324,13 +389,15 @@ export default function HomePage() {
               {mode === "stagger" && (
                 <>
                   <p className="border border-[var(--line)] bg-[var(--bg)] px-3 py-2 text-xs leading-relaxed text-[var(--muted)]">
-                    Starts soon, then posts one after another every N minutes.
-                    Good for a quick test or a short burst.
+                    Starts in about 1 minute, then posts one after another every
+                    N minutes. Want it live immediately? Use{" "}
+                    <strong className="text-[var(--ink)]">post now</strong> on
+                    that card in the buffer. Minimum interval: 1 minute.
                   </p>
                   <Field label="minutes between posts">
                     <input
                       type="number"
-                      min={5}
+                      min={1}
                       max={180}
                       value={everyMinutes}
                       onChange={(e) => setEveryMinutes(Number(e.target.value))}
@@ -416,7 +483,9 @@ export default function HomePage() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <SectionTitle path="/queue" label="buffer" />
             <div className="flex flex-wrap gap-2">
-              {(["all", "scheduled", "posted", "failed"] as const).map((f) => (
+              {(
+                ["all", "scheduled", "draft", "posted", "failed"] as const
+              ).map((f) => (
                 <button
                   key={f}
                   type="button"
@@ -424,8 +493,20 @@ export default function HomePage() {
                   className={`chip ${filter === f ? "chip-active" : ""}`}
                 >
                   {f}
+                  {f === "draft" && stats.draft ? ` ${stats.draft}` : ""}
+                  {f === "failed" && stats.failed ? ` ${stats.failed}` : ""}
                 </button>
               ))}
+              {(stats.failed > 0 || stats.draft > 0) && (
+                <button
+                  type="button"
+                  onClick={() => void cleanupFailedAndDrafts()}
+                  className="chip"
+                  title="Delete failed + draft posts and free cloud storage"
+                >
+                  clear failed/drafts
+                </button>
+              )}
             </div>
           </div>
 
@@ -472,7 +553,28 @@ export default function HomePage() {
                         {post.error}
                       </p>
                     ) : null}
-                    <div className="flex gap-3">
+                    <div className="flex flex-wrap gap-x-3 gap-y-1">
+                      {post.status !== "posted" &&
+                        post.status !== "publishing" && (
+                          <button
+                            type="button"
+                            disabled={busyId === post.id}
+                            onClick={() => void postNow(post.id)}
+                            className="font-pixel text-xs tracking-wide text-[var(--accent)] uppercase disabled:opacity-50"
+                          >
+                            {busyId === post.id ? "..." : "post now"}
+                          </button>
+                        )}
+                      {post.status === "scheduled" && (
+                        <button
+                          type="button"
+                          disabled={busyId === post.id}
+                          onClick={() => void unschedulePost(post.id)}
+                          className="font-pixel text-xs tracking-wide text-[var(--muted)] uppercase hover:text-[var(--warn)] disabled:opacity-50"
+                        >
+                          unschedule
+                        </button>
+                      )}
                       {post.status === "failed" && (
                         <button
                           type="button"
@@ -489,7 +591,7 @@ export default function HomePage() {
                             onClick={() => void deletePost(post.id)}
                             className="font-pixel text-xs tracking-wide text-[var(--muted)] uppercase hover:text-[var(--danger)]"
                           >
-                            rm
+                            delete
                           </button>
                         )}
                     </div>
