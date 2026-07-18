@@ -158,6 +158,23 @@ export default function HomePage() {
     }
   }
 
+  async function syncInstagramDeleted() {
+    setMessage(null);
+    try {
+      const res = await fetch("/api/sync", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Sync failed");
+      setMessage(
+        `ok: checked ${data.checked} · removed ${data.removed} deleted-from-IG · kept ${data.kept}`,
+      );
+      await load();
+    } catch (err) {
+      setMessage(
+        `error: ${err instanceof Error ? err.message : "Sync failed"}`,
+      );
+    }
+  }
+
   const visible = useMemo(() => {
     if (filter === "all") return posts;
     return posts.filter((p) => p.status === filter);
@@ -507,6 +524,16 @@ export default function HomePage() {
                   clear failed/drafts
                 </button>
               )}
+              {stats.posted > 0 && (
+                <button
+                  type="button"
+                  onClick={() => void syncInstagramDeleted()}
+                  className="chip"
+                  title="Remove local posts that were deleted on Instagram"
+                >
+                  sync ig deletes
+                </button>
+              )}
             </div>
           </div>
 
@@ -582,6 +609,15 @@ export default function HomePage() {
                           className="font-pixel text-xs tracking-wide text-[var(--accent)] uppercase"
                         >
                           retry
+                        </button>
+                      )}
+                      {post.status === "posted" && (
+                        <button
+                          type="button"
+                          onClick={() => void deletePost(post.id)}
+                          className="font-pixel text-xs tracking-wide text-[var(--muted)] uppercase hover:text-[var(--danger)]"
+                        >
+                          delete local
                         </button>
                       )}
                       {post.status !== "posted" &&

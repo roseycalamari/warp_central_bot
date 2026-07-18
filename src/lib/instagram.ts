@@ -48,6 +48,38 @@ async function graphFetch<T>(
   return data;
 }
 
+/** Returns true if media still exists on Instagram; false if deleted/missing. */
+export async function instagramMediaExists(mediaId: string): Promise<boolean> {
+  const token = requireEnv("META_ACCESS_TOKEN");
+  const url = new URL(`${graphHost()}/${apiVersion()}/${mediaId}`);
+  url.searchParams.set("fields", "id");
+  url.searchParams.set("access_token", token);
+
+  const res = await fetch(url);
+  const data = (await res.json()) as { id?: string } & GraphError;
+
+  if (data.id) return true;
+
+  const message = (data.error?.message || "").toLowerCase();
+  // Typical responses when media was deleted or is inaccessible
+  if (
+    !res.ok ||
+    data.error?.code === 100 ||
+    data.error?.code === 24 ||
+    message.includes("does not exist") ||
+    message.includes("unsupported get request") ||
+    message.includes("cannot be loaded") ||
+    message.includes("invalid")
+  ) {
+    return false;
+  }
+
+  // Unknown error — don't delete local copy
+  throw new Error(
+    data.error?.message || `Could not verify Instagram media ${mediaId}`,
+  );
+}
+
 export async function getPublishingLimit(igUserId: string) {
   return graphFetch<{
     data?: Array<{ quota_usage?: number; config?: { quota_total?: number } }>;
