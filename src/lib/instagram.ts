@@ -6,13 +6,27 @@ type GraphError = {
   error?: { message?: string; code?: number; error_subcode?: number };
 };
 
+/** Instagram Login tokens use graph.instagram.com; Facebook Login uses graph.facebook.com */
+function graphHost() {
+  const explicit = process.env.META_GRAPH_HOST?.trim();
+  if (explicit) return explicit.replace(/\/$/, "");
+
+  const token = process.env.META_ACCESS_TOKEN || "";
+  // Instagram User tokens from "Instagram login" usually start with IG
+  if (token.startsWith("IG")) return "https://graph.instagram.com";
+  return "https://graph.facebook.com";
+}
+
+function apiVersion() {
+  return process.env.META_GRAPH_VERSION || "v21.0";
+}
+
 async function graphFetch<T>(
   path: string,
   init?: RequestInit & { query?: Record<string, string> },
 ): Promise<T> {
-  const version = process.env.META_GRAPH_VERSION || "v21.0";
   const token = requireEnv("META_ACCESS_TOKEN");
-  const url = new URL(`https://graph.facebook.com/${version}${path}`);
+  const url = new URL(`${graphHost()}/${apiVersion()}${path}`);
   url.searchParams.set("access_token", token);
   if (init?.query) {
     for (const [k, v] of Object.entries(init.query)) {
@@ -53,9 +67,8 @@ export async function createImageContainer(opts: {
     access_token: requireEnv("META_ACCESS_TOKEN"),
   });
 
-  const version = process.env.META_GRAPH_VERSION || "v21.0";
   const res = await fetch(
-    `https://graph.facebook.com/${version}/${opts.igUserId}/media`,
+    `${graphHost()}/${apiVersion()}/${opts.igUserId}/media`,
     {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -102,9 +115,8 @@ export async function publishContainer(opts: {
     access_token: requireEnv("META_ACCESS_TOKEN"),
   });
 
-  const version = process.env.META_GRAPH_VERSION || "v21.0";
   const res = await fetch(
-    `https://graph.facebook.com/${version}/${opts.igUserId}/media_publish`,
+    `${graphHost()}/${apiVersion()}/${opts.igUserId}/media_publish`,
     {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -124,13 +136,21 @@ export async function publishImagePost(opts: {
 }) {
   const igUserId = requireEnv("IG_USER_ID");
 
-  const limit = await getPublishingLimit(igUserId);
-  const usage = limit.data?.[0]?.quota_usage ?? 0;
-  const total = limit.data?.[0]?.config?.quota_total ?? 100;
-  if (usage >= total) {
-    throw new Error(
-      `Instagram publish quota reached (${usage}/${total} in 24h)`,
-    );
+  let usage = 0;
+  let total = 100;
+  try {
+    const limit = await getPublishingLimit(igUserId);
+    usage = limit.data?.[0]?.quota_usage ?? 0;
+    total = limit.data?.[0]?.config?.quota_total ?? 100;
+    if (usage >= total) {
+      throw new Error(
+        `Instagram publish quota reached (${usage}/${total} in 24h)`,
+      );
+    }
+  } catch (err) {
+    // Don't block publishing if quota endpoint is unavailable for this token type
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes("quota reached")) throw err;
   }
 
   const containerId = await createImageContainer({
