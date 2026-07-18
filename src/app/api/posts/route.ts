@@ -21,87 +21,112 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const form = await req.formData();
-  const files = form.getAll("images").filter((f): f is File => f instanceof File);
-  const caption = String(form.get("caption") || "");
-  const mode = String(form.get("mode") || "bulk_day");
-  const dayStr = form.get("day") ? String(form.get("day")) : null;
-  const startHour = Number(form.get("startHour") || 9);
-  const endHour = Number(form.get("endHour") || 21);
-  const everyMinutes = Number(form.get("everyMinutes") || 45);
-  const singleAt = form.get("scheduledAt")
-    ? new Date(String(form.get("scheduledAt")))
-    : null;
-
-  if (files.length === 0) {
-    return NextResponse.json({ error: "No images uploaded" }, { status: 400 });
-  }
-
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
-    return NextResponse.json(
-      { error: "BLOB_READ_WRITE_TOKEN is not set" },
-      { status: 500 },
+  try {
+    const form = await req.formData();
+    const files = form
+      .getAll("images")
+      .filter((f): f is File => f instanceof File && f.size > 0);
+    const caption = String(form.get("caption") || "");
+    const mode = String(form.get("mode") || "bulk_day");
+    const dayStr = form.get("day") ? String(form.get("day")) : null;
+    const startHour = Number(form.get("startHour") || 9);
+    const endHour = Number(form.get("endHour") || 21);
+    const everyMinutes = Number(form.get("everyMinutes") || 45);
+    const batchStartIndex = Math.max(
+      0,
+      Number(form.get("batchStartIndex") || 0),
     );
-  }
+    const batchTotal = Math.max(
+      files.length,
+      Number(form.get("batchTotal") || files.length),
+    );
+    const singleAt = form.get("scheduledAt")
+      ? new Date(String(form.get("scheduledAt")))
+      : null;
 
-  const saved: { imageUrl: string; originalName: string }[] = [];
+    if (files.length === 0) {
+      return NextResponse.json({ error: "No images uploaded" }, { status: 400 });
+    }
 
-  for (const file of files) {
-    const buf = Buffer.from(await file.arrayBuffer());
-    const jpeg = await sharp(buf)
-      .rotate()
-      .resize({
-        width: 1440,
-        height: 1440,
-        fit: "inside",
-        withoutEnlargement: true,
-      })
-      .jpeg({ quality: 90, mozjpeg: true })
-      .toBuffer();
+    if (!process.env.BLOB_READ_WRITE_TOKEN) {
+      return NextResponse.json(
+        { error: "BLOB_READ_WRITE_TOKEN is not set" },
+        { status: 500 },
+      );
+    }
 
-    const filename = `moodboard/${randomUUID()}.jpg`;
-    const blob = await put(filename, jpeg, {
-      access: "public",
-      contentType: "image/jpeg",
-      addRandomSuffix: false,
-    });
+    const saved: { imageUrl: string; originalName: string }[] = [];
 
-    saved.push({ imageUrl: blob.url, originalName: file.name });
-  }
+    for (const file of files) {
+      const buf = Buffer.from(await file.arrayBuffer());
+      const jpeg = await sharp(buf)
+        .rotate()
+        .resize({
+          width: 1440,
+          height: 1440,
+          fit: "inside",
+          withoutEnlargement: true,
+        })
+        .jpeg({ quality: 90, mozjpeg: true })
+        .toBuffer();
 
-  let times: (Date | null)[] = [];
-
-  if (mode === "draft") {
-    times = saved.map(() => null);
-  } else if (mode === "single" && singleAt && !Number.isNaN(singleAt.getTime())) {
-    times = saved.map(() => singleAt);
-  } else if (mode === "stagger") {
-    times = staggerFromNow(saved.length, everyMinutes);
-  } else {
-    const day = dayStr ? new Date(`${dayStr}T12:00:00`) : new Date();
-    times = buildDaySchedule({
-      count: saved.length,
-      day,
-      startHour,
-      endHour,
-    });
-  }
-
-  const posts = await prisma.$transaction(
-    saved.map((s, i) => {
-      const scheduledAt = times[i] ?? null;
-      return prisma.post.create({
-        data: {
-          caption,
-          imageUrl: s.imageUrl,
-          status: scheduledAt ? "scheduled" : "draft",
-          scheduledAt,
-        },
+      const filename = `moodboard/${randomUUID()}.jpg`;
+      const blob = await put(filename, jpeg, {
+        access: "public",
+        contentType: "image/jpeg",
+        addRandomSuffix: false,
       });
-    }),
-  );
 
-  return NextResponse.json({ ok: true, count: posts.length, posts });
+      saved.push({ imageUrl: blob.url, originalName: file.name });
+    }
+
+    let allTimes: (Date | null)[] = [];
+
+    if (mode === "draft") {
+      allTimes = Array.from({ length: batchTotal }, () => null);
+    } else if (
+      mode === "single" &&
+      singleAt &&
+      !Number.isNaN(singleAt.getTime())
+    ) {
+      allTimes = Array.from({ length: batchTotal }, () => singleAt);
+    } else if (mode === "stagger") {
+      allTimes = staggerFromNow(batchTotal, everyMinutes);
+    } else {
+      const day = dayStr ? new Date(`${dayStr}T12:00:00`) : new Date();
+      allTimes = buildDaySchedule({
+        count: batchTotal,
+        day,
+        startHour,
+        endHour,
+      });
+    }
+
+    const posts = await prisma.$transaction(
+      saved.map((s, i) => {
+        const scheduledAt = allTimes[batchStartIndex + i] ?? null;
+        return prisma.post.create({
+          data: {
+            caption,
+            imageUrl: s.imageUrl,
+            status: scheduledAt ? "scheduled" : "draft",
+            scheduledAt,
+          },
+        });
+      }),
+    );
+
+    return NextResponse.json({
+      ok: true,
+      count: posts.length,
+      batchStartIndex,
+      batchTotal,
+      posts,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
 
 export async function PATCH(req: NextRequest) {

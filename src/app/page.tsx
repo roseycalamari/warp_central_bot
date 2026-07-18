@@ -1,6 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  compressImageForUpload,
+  parseApiJson,
+} from "@/lib/compress-image";
 
 type Theme = "dark" | "light";
 
@@ -224,26 +228,61 @@ export default function HomePage() {
     setUploading(true);
     setMessage(null);
     try {
-      const form = new FormData();
-      files.forEach((f) => form.append("images", f));
-      form.set("caption", caption);
-      form.set("mode", mode);
-      form.set("day", day);
-      form.set("startHour", String(startHour));
-      form.set("endHour", String(endHour));
-      form.set("everyMinutes", String(everyMinutes));
+      setMessage(`preparing ${files.length} image${files.length === 1 ? "" : "s"}...`);
+      const prepared: File[] = [];
+      for (let i = 0; i < files.length; i++) {
+        prepared.push(await compressImageForUpload(files[i]));
+        if (i === 0 || (i + 1) % 5 === 0 || i === files.length - 1) {
+          setMessage(`preparing ${i + 1}/${files.length}...`);
+        }
+      }
 
-      const res = await fetch("/api/posts", { method: "POST", body: form });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Upload failed");
+      // Stay under Vercel's ~4.5MB request limit (phone photos blow past it in one shot)
+      const BATCH_SIZE = 3;
+      let queued = 0;
 
-      setMessage(`ok: queued ${data.count} image${data.count === 1 ? "" : "s"}`);
+      for (let start = 0; start < prepared.length; start += BATCH_SIZE) {
+        const batch = prepared.slice(start, start + BATCH_SIZE);
+        setMessage(
+          `uploading ${Math.min(start + batch.length, prepared.length)}/${prepared.length}...`,
+        );
+
+        const form = new FormData();
+        batch.forEach((f) => form.append("images", f));
+        form.set("caption", caption);
+        form.set("mode", mode);
+        form.set("day", day);
+        form.set("startHour", String(startHour));
+        form.set("endHour", String(endHour));
+        form.set("everyMinutes", String(everyMinutes));
+        form.set("batchStartIndex", String(start));
+        form.set("batchTotal", String(prepared.length));
+
+        const res = await fetch("/api/posts", { method: "POST", body: form });
+        const data = await parseApiJson(res);
+        if (!res.ok) {
+          throw new Error(
+            typeof data.error === "string" ? data.error : "Upload failed",
+          );
+        }
+        queued += typeof data.count === "number" ? data.count : batch.length;
+      }
+
+      setMessage(
+        `ok: queued ${queued} image${queued === 1 ? "" : "s"}` +
+          (mode === "stagger"
+            ? ` · every ${everyMinutes} min`
+            : mode === "bulk_day"
+              ? " · spread across day"
+              : " · as drafts"),
+      );
       clearFiles();
       await load();
     } catch (err) {
       setMessage(
         `error: ${err instanceof Error ? err.message : "Upload failed"}`,
       );
+      await load();
     } finally {
       setUploading(false);
     }
@@ -344,7 +383,8 @@ export default function HomePage() {
             <div>
               <SectionTitle path="/queue" label="ingest images" />
               <p className="mt-2 text-xs text-[var(--muted)] sm:text-sm">
-                Multi-select photos. Converted to Instagram JPEG automatically.
+                Multi-select photos. Compressed before upload, then queued for
+                Instagram (large batches send in small chunks).
               </p>
             </div>
 
