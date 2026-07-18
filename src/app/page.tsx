@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+type Theme = "dark" | "light";
+
 type Post = {
   id: string;
   caption: string;
@@ -48,12 +50,36 @@ export default function HomePage() {
   const [filter, setFilter] = useState<"all" | "scheduled" | "posted" | "failed">(
     "all",
   );
+  const [theme, setTheme] = useState<Theme>("dark");
+
+  useEffect(() => {
+    const current =
+      (document.documentElement.getAttribute("data-theme") as Theme | null) ||
+      "dark";
+    setTheme(current);
+  }, []);
+
+  function applyTheme(next: Theme) {
+    setTheme(next);
+    document.documentElement.setAttribute("data-theme", next);
+    try {
+      localStorage.setItem("warp-theme", next);
+    } catch {
+      // ignore
+    }
+  }
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/posts");
-    const data = await res.json();
-    setPosts(data.posts || []);
-    setLoading(false);
+    try {
+      const res = await fetch("/api/posts");
+      const text = await res.text();
+      const data = text ? JSON.parse(text) : {};
+      setPosts(Array.isArray(data.posts) ? data.posts : []);
+    } catch {
+      setPosts([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -78,7 +104,7 @@ export default function HomePage() {
   async function onUpload(e: React.FormEvent) {
     e.preventDefault();
     if (!files || files.length === 0) {
-      setMessage("Pick at least one image.");
+      setMessage("error: no images selected");
       return;
     }
 
@@ -98,13 +124,15 @@ export default function HomePage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Upload failed");
 
-      setMessage(`Queued ${data.count} image${data.count === 1 ? "" : "s"}.`);
+      setMessage(`ok: queued ${data.count} image${data.count === 1 ? "" : "s"}`);
       setFiles(null);
       const input = document.getElementById("images") as HTMLInputElement | null;
       if (input) input.value = "";
       await load();
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Upload failed");
+      setMessage(
+        `error: ${err instanceof Error ? err.message : "Upload failed"}`,
+      );
     } finally {
       setUploading(false);
     }
@@ -119,12 +147,14 @@ export default function HomePage() {
       if (!res.ok) throw new Error(data.error || "Publish failed");
       setMessage(
         data.processed
-          ? `Processed ${data.processed} due post(s).`
-          : "Nothing due right now.",
+          ? `ok: processed ${data.processed} due post(s)`
+          : "ok: nothing due right now",
       );
       await load();
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Publish failed");
+      setMessage(
+        `error: ${err instanceof Error ? err.message : "Publish failed"}`,
+      );
     } finally {
       setPublishing(false);
     }
@@ -146,307 +176,363 @@ export default function HomePage() {
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-6xl flex-col gap-10 px-5 py-10 md:px-8 md:py-14">
-      <header className="flex flex-col gap-4 border-b border-[var(--line)] pb-8 md:flex-row md:items-end md:justify-between">
-        <div>
-          <p className="mb-2 text-xs tracking-[0.22em] text-[var(--muted)] uppercase">
-            Instagram queue
-          </p>
-          <h1
-            className="text-4xl leading-none font-bold tracking-tight md:text-6xl"
-            style={{ fontFamily: "var(--font-display), sans-serif" }}
-          >
-            Warp Central
-          </h1>
-          <p className="mt-3 max-w-xl text-[var(--muted)]">
-            Drop moodboard images in. The bot spaces them through the day and
-            posts to Instagram automatically.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-3 text-sm">
-          <Stat label="Scheduled" value={stats.scheduled} />
-          <Stat label="Posted" value={stats.posted} />
-          <Stat label="Failed" value={stats.failed} />
-        </div>
-      </header>
-
-      <section className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
-        <form
-          onSubmit={onUpload}
-          className="flex flex-col gap-5 rounded-2xl border border-[var(--line)] bg-[var(--bg-elevated)]/80 p-6 backdrop-blur"
-        >
-          <div>
-            <h2
-              className="text-2xl font-semibold"
-              style={{ fontFamily: "var(--font-display), sans-serif" }}
-            >
-              Queue images
-            </h2>
-            <p className="mt-1 text-sm text-[var(--muted)]">
-              Upload up to 20+ JPEGs/PNGs. We convert to Instagram-ready JPEG.
-            </p>
+    <>
+      <div className="scanlines" aria-hidden />
+      <main className="relative z-10 mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-6 sm:px-6 md:gap-10 md:py-10">
+        <header className="panel flex flex-col gap-6 p-5 sm:p-7">
+          <div className="flex items-start justify-between gap-3">
+            <WarpLogo />
+            <ThemeToggle theme={theme} onChange={applyTheme} />
           </div>
 
-          <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[var(--line)] bg-[var(--bg-soft)]/60 px-4 py-10 text-center transition hover:border-[var(--accent)]">
-            <span className="text-sm font-medium">Select moodboard images</span>
-            <span className="text-xs text-[var(--muted)]">
-              {files?.length
-                ? `${files.length} file${files.length === 1 ? "" : "s"} selected`
-                : "PNG, JPG, WEBP — multi-select OK"}
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+            <p className="max-w-xl text-sm leading-relaxed text-[var(--muted)]">
+              <span className="text-[var(--accent)]">$</span> queue moodboard
+              images · auto-schedule · post to instagram
+            </p>
+
+            <div className="grid grid-cols-3 gap-2 sm:gap-3">
+              <Stat label="scheduled" value={stats.scheduled} />
+              <Stat label="posted" value={stats.posted} />
+              <Stat label="failed" value={stats.failed} />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-[var(--line)] pt-4 status-bar">
+            <span>
+              status<span className="text-[var(--accent)]">:</span> online
             </span>
-            <input
-              id="images"
-              type="file"
-              accept="image/*"
-              multiple
-              className="sr-only"
-              onChange={(e) => setFiles(e.target.files)}
-            />
-          </label>
+            <span className="hidden sm:inline">|</span>
+            <span>
+              target<span className="text-[var(--accent)]">:</span> @warp.central
+            </span>
+            <span className="hidden sm:inline">|</span>
+            <span className="inline-flex items-center gap-1">
+              mode
+              <span className="text-[var(--accent)]">:</span> {theme}
+            </span>
+          </div>
+        </header>
 
-          <label className="flex flex-col gap-2 text-sm">
-            <span className="text-[var(--muted)]">Caption (same for this batch)</span>
-            <textarea
-              value={caption}
-              onChange={(e) => setCaption(e.target.value)}
-              rows={3}
-              placeholder="Optional caption / hashtags"
-              className="resize-y rounded-xl border border-[var(--line)] bg-[var(--bg)] px-3 py-2 outline-none focus:border-[var(--accent)]"
-            />
-          </label>
+        <section className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+          <form onSubmit={onUpload} className="panel flex flex-col gap-5 p-5 sm:p-6">
+            <div>
+              <SectionTitle path="/queue" label="ingest images" />
+              <p className="mt-2 text-xs text-[var(--muted)] sm:text-sm">
+                Multi-select photos. Converted to Instagram JPEG automatically.
+              </p>
+            </div>
 
-          <fieldset className="grid gap-3">
-            <legend className="mb-1 text-sm text-[var(--muted)]">Schedule mode</legend>
+            <label className="flex cursor-pointer flex-col items-center justify-center gap-2 border border-dashed border-[var(--line)] bg-[var(--bg)] px-4 py-10 text-center transition hover:border-[var(--accent)] active:border-[var(--accent)]">
+              <span className="label-pixel text-[var(--accent)]">
+                // drop zone
+              </span>
+              <span className="text-sm font-medium">
+                {files?.length
+                  ? `${files.length} file${files.length === 1 ? "" : "s"} selected`
+                  : "tap / click to select images"}
+              </span>
+              <span className="text-[11px] text-[var(--muted)]">
+                png · jpg · webp · works on phone too
+              </span>
+              <input
+                id="images"
+                type="file"
+                accept="image/*"
+                multiple
+                className="sr-only"
+                onChange={(e) => setFiles(e.target.files)}
+              />
+            </label>
+
+            <label className="flex flex-col gap-2 text-xs">
+              <span className="label-pixel text-[var(--muted)]">caption</span>
+              <textarea
+                value={caption}
+                onChange={(e) => setCaption(e.target.value)}
+                rows={3}
+                placeholder="// optional caption / hashtags"
+                className="field resize-y text-sm"
+              />
+            </label>
+
+            <fieldset className="grid gap-3">
+              <legend className="mb-1 label-pixel text-[var(--muted)]">
+                schedule mode
+              </legend>
+              <div className="flex flex-wrap gap-2">
+                {(
+                  [
+                    ["bulk_day", "spread day"],
+                    ["stagger", "every n min"],
+                    ["draft", "drafts"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setMode(value)}
+                    className={`chip ${mode === value ? "chip-active" : ""}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {mode === "bulk_day" && (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <Field label="day">
+                    <input
+                      type="date"
+                      value={day}
+                      onChange={(e) => setDay(e.target.value)}
+                      className="field text-sm"
+                    />
+                  </Field>
+                  <Field label="start_hour">
+                    <input
+                      type="number"
+                      min={0}
+                      max={23}
+                      value={startHour}
+                      onChange={(e) => setStartHour(Number(e.target.value))}
+                      className="field text-sm"
+                    />
+                  </Field>
+                  <Field label="end_hour">
+                    <input
+                      type="number"
+                      min={1}
+                      max={23}
+                      value={endHour}
+                      onChange={(e) => setEndHour(Number(e.target.value))}
+                      className="field text-sm"
+                    />
+                  </Field>
+                </div>
+              )}
+
+              {mode === "stagger" && (
+                <Field label="interval_minutes">
+                  <input
+                    type="number"
+                    min={5}
+                    max={180}
+                    value={everyMinutes}
+                    onChange={(e) => setEveryMinutes(Number(e.target.value))}
+                    className="field text-sm"
+                  />
+                </Field>
+              )}
+            </fieldset>
+
+            <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:flex-wrap">
+              <button type="submit" disabled={uploading} className="btn-primary">
+                {uploading ? "queuing..." : "add to queue"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void runPublishNow()}
+                disabled={publishing}
+                className="btn-ghost"
+              >
+                {publishing ? "publishing..." : "publish due now"}
+              </button>
+            </div>
+
+            {message && (
+              <p
+                className={`border border-[var(--line)] bg-[var(--bg)] px-3 py-2 text-xs ${
+                  message.startsWith("error")
+                    ? "text-[var(--danger)]"
+                    : "text-[var(--ok)]"
+                }`}
+              >
+                {message}
+              </p>
+            )}
+          </form>
+
+          <aside className="panel flex flex-col gap-4 p-5 sm:p-6">
+            <SectionTitle path="/sys" label="how it works" />
+            <div className="space-y-3 text-xs leading-relaxed text-[var(--muted)] sm:text-sm">
+              <p>
+                <span className="font-pixel text-[var(--accent)]">01</span> You
+                upload photos here (phone or computer). They get saved in cloud
+                storage (Vercel Blob).
+              </p>
+              <p>
+                <span className="font-pixel text-[var(--accent)]">02</span> You
+                choose when each one should go live. The schedule is saved in
+                our database (Postgres).
+              </p>
+              <p>
+                <span className="font-pixel text-[var(--accent)]">03</span> Every
+                minute, a free timer (cron) checks: “is anything due?”
+              </p>
+              <p>
+                <span className="font-pixel text-[var(--accent)]">04</span> If
+                yes, Meta’s Instagram API posts it to @warp.central
+                automatically.
+              </p>
+            </div>
+            <div className="mt-auto border-t border-[var(--line)] pt-4 text-[11px] leading-relaxed text-[var(--muted)]">
+              You don’t leave a laptop on. Meta allows up to 100 posts / day —
+              ~20 is safe.
+            </div>
+          </aside>
+        </section>
+
+        <section className="panel flex flex-col gap-5 p-5 sm:p-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <SectionTitle path="/queue" label="buffer" />
             <div className="flex flex-wrap gap-2">
-              {(
-                [
-                  ["bulk_day", "Spread across a day"],
-                  ["stagger", "Every N minutes from now"],
-                  ["draft", "Save as drafts"],
-                ] as const
-              ).map(([value, label]) => (
+              {(["all", "scheduled", "posted", "failed"] as const).map((f) => (
                 <button
-                  key={value}
+                  key={f}
                   type="button"
-                  onClick={() => setMode(value)}
-                  className="rounded-full px-3 py-1.5 text-xs font-medium transition"
-                  style={{
-                    background:
-                      mode === value ? "var(--accent)" : "var(--bg-soft)",
-                    color:
-                      mode === value ? "var(--accent-ink)" : "var(--ink)",
-                  }}
+                  onClick={() => setFilter(f)}
+                  className={`chip ${filter === f ? "chip-active" : ""}`}
                 >
-                  {label}
+                  {f}
                 </button>
               ))}
             </div>
-
-            {mode === "bulk_day" && (
-              <div className="grid grid-cols-3 gap-3">
-                <Field label="Day">
-                  <input
-                    type="date"
-                    value={day}
-                    onChange={(e) => setDay(e.target.value)}
-                    className="w-full rounded-xl border border-[var(--line)] bg-[var(--bg)] px-3 py-2 outline-none focus:border-[var(--accent)]"
-                  />
-                </Field>
-                <Field label="Start hour">
-                  <input
-                    type="number"
-                    min={0}
-                    max={23}
-                    value={startHour}
-                    onChange={(e) => setStartHour(Number(e.target.value))}
-                    className="w-full rounded-xl border border-[var(--line)] bg-[var(--bg)] px-3 py-2 outline-none focus:border-[var(--accent)]"
-                  />
-                </Field>
-                <Field label="End hour">
-                  <input
-                    type="number"
-                    min={1}
-                    max={23}
-                    value={endHour}
-                    onChange={(e) => setEndHour(Number(e.target.value))}
-                    className="w-full rounded-xl border border-[var(--line)] bg-[var(--bg)] px-3 py-2 outline-none focus:border-[var(--accent)]"
-                  />
-                </Field>
-              </div>
-            )}
-
-            {mode === "stagger" && (
-              <Field label="Minutes between posts">
-                <input
-                  type="number"
-                  min={5}
-                  max={180}
-                  value={everyMinutes}
-                  onChange={(e) => setEveryMinutes(Number(e.target.value))}
-                  className="w-full rounded-xl border border-[var(--line)] bg-[var(--bg)] px-3 py-2 outline-none focus:border-[var(--accent)]"
-                />
-              </Field>
-            )}
-          </fieldset>
-
-          <div className="flex flex-wrap gap-3 pt-1">
-            <button
-              type="submit"
-              disabled={uploading}
-              className="rounded-full bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-[var(--accent-ink)] disabled:opacity-50"
-            >
-              {uploading ? "Queuing…" : "Add to queue"}
-            </button>
-            <button
-              type="button"
-              onClick={() => void runPublishNow()}
-              disabled={publishing}
-              className="rounded-full border border-[var(--line)] px-5 py-2.5 text-sm font-medium hover:border-[var(--accent)] disabled:opacity-50"
-            >
-              {publishing ? "Publishing…" : "Publish due now"}
-            </button>
           </div>
 
-          {message && (
-            <p className="text-sm text-[var(--accent)]">{message}</p>
+          {loading ? (
+            <p className="text-sm text-[var(--muted)]">loading...</p>
+          ) : visible.length === 0 ? (
+            <p className="border border-dashed border-[var(--line)] px-4 py-8 text-center text-sm text-[var(--muted)]">
+              // empty buffer — upload to begin
+            </p>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+              {visible.map((post) => (
+                <article
+                  key={post.id}
+                  className="overflow-hidden border border-[var(--line)] bg-[var(--bg)]"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={post.imageUrl}
+                    alt=""
+                    className="aspect-square w-full object-cover"
+                  />
+                  <div className="flex flex-col gap-2 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span
+                        className="font-pixel text-[10px] tracking-wide uppercase sm:text-xs"
+                        style={{
+                          color: STATUS_COLOR[post.status] || "var(--muted)",
+                        }}
+                      >
+                        {post.status}
+                      </span>
+                      <span className="font-pixel text-[10px] text-[var(--muted)] sm:text-xs">
+                        {formatWhen(post.scheduledAt)}
+                      </span>
+                    </div>
+                    {post.caption ? (
+                      <p className="line-clamp-2 text-[11px] text-[var(--muted)]">
+                        {post.caption}
+                      </p>
+                    ) : null}
+                    {post.error ? (
+                      <p className="line-clamp-3 text-[10px] text-[var(--danger)]">
+                        {post.error}
+                      </p>
+                    ) : null}
+                    <div className="flex gap-3">
+                      {post.status === "failed" && (
+                        <button
+                          type="button"
+                          onClick={() => void retryPost(post.id)}
+                          className="font-pixel text-xs tracking-wide text-[var(--accent)] uppercase"
+                        >
+                          retry
+                        </button>
+                      )}
+                      {post.status !== "posted" &&
+                        post.status !== "publishing" && (
+                          <button
+                            type="button"
+                            onClick={() => void deletePost(post.id)}
+                            className="font-pixel text-xs tracking-wide text-[var(--muted)] uppercase hover:text-[var(--danger)]"
+                          >
+                            rm
+                          </button>
+                        )}
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
           )}
-        </form>
+        </section>
 
-        <aside className="flex flex-col gap-4 rounded-2xl border border-[var(--line)] bg-[var(--bg-elevated)]/60 p-6">
-          <h2
-            className="text-2xl font-semibold"
-            style={{ fontFamily: "var(--font-display), sans-serif" }}
-          >
-            How it runs
-          </h2>
-          <ol className="list-decimal space-y-3 pl-5 text-sm text-[var(--muted)]">
-            <li>
-              Deploy to Vercel and add env vars (see README)
-            </li>
-            <li>
-              Point a free cron (cron-job.org) at{" "}
-              <code className="text-[var(--ink)]">/api/publish</code> every minute
-            </li>
-            <li>
-              Upload ~20 images → they spread across the day and post automatically
-            </li>
-            <li>Meta limit: 100 API posts / 24h — 20/day is fine</li>
-          </ol>
-          <p className="text-xs leading-relaxed text-[var(--muted)]">
-            Photos live on Vercel Blob (public HTTPS). Your queue lives in Postgres.
-            No laptop left on, no ngrok.
-          </p>
-        </aside>
-      </section>
+        <footer className="status-bar pb-4 text-center">
+          /warp <span className="font-pixel">central</span>
+          <span className="cursor-blink ml-1 inline-block h-2.5 w-[2px] align-middle bg-[var(--accent)]" />
+        </footer>
+      </main>
+    </>
+  );
+}
 
-      <section className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2
-            className="text-2xl font-semibold"
-            style={{ fontFamily: "var(--font-display), sans-serif" }}
-          >
-            Queue
-          </h2>
-          <div className="flex flex-wrap gap-2">
-            {(["all", "scheduled", "posted", "failed"] as const).map((f) => (
-              <button
-                key={f}
-                type="button"
-                onClick={() => setFilter(f)}
-                className="rounded-full px-3 py-1 text-xs capitalize"
-                style={{
-                  background: filter === f ? "var(--bg-soft)" : "transparent",
-                  border: `1px solid ${filter === f ? "var(--accent)" : "var(--line)"}`,
-                }}
-              >
-                {f}
-              </button>
-            ))}
-          </div>
-        </div>
+function WarpLogo() {
+  return (
+    <div className="warp-logo" aria-label="/warp central">
+      <span className="warp-logo-top">/warp</span>
+      <span className="warp-logo-bottom">
+        <span className="warp-logo-central">central</span>
+        <span className="warp-logo-cursor" aria-hidden />
+      </span>
+    </div>
+  );
+}
 
-        {loading ? (
-          <p className="text-sm text-[var(--muted)]">Loading…</p>
-        ) : visible.length === 0 ? (
-          <p className="text-sm text-[var(--muted)]">No posts in this view yet.</p>
-        ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-            {visible.map((post) => (
-              <article
-                key={post.id}
-                className="overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--bg-elevated)]"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={post.imageUrl}
-                  alt=""
-                  className="aspect-square w-full object-cover"
-                />
-                <div className="flex flex-col gap-2 p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <span
-                      className="text-[10px] font-semibold tracking-wide uppercase"
-                      style={{ color: STATUS_COLOR[post.status] || "var(--muted)" }}
-                    >
-                      {post.status}
-                    </span>
-                    <span className="text-[10px] text-[var(--muted)]">
-                      {formatWhen(post.scheduledAt)}
-                    </span>
-                  </div>
-                  {post.caption ? (
-                    <p className="line-clamp-2 text-xs text-[var(--muted)]">
-                      {post.caption}
-                    </p>
-                  ) : null}
-                  {post.error ? (
-                    <p className="line-clamp-3 text-[10px] text-[var(--danger)]">
-                      {post.error}
-                    </p>
-                  ) : null}
-                  <div className="flex gap-2">
-                    {post.status === "failed" && (
-                      <button
-                        type="button"
-                        onClick={() => void retryPost(post.id)}
-                        className="text-[10px] font-medium text-[var(--accent)]"
-                      >
-                        Retry
-                      </button>
-                    )}
-                    {post.status !== "posted" && post.status !== "publishing" && (
-                      <button
-                        type="button"
-                        onClick={() => void deletePost(post.id)}
-                        className="text-[10px] font-medium text-[var(--muted)] hover:text-[var(--danger)]"
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
+function ThemeToggle({
+  theme,
+  onChange,
+}: {
+  theme: Theme;
+  onChange: (theme: Theme) => void;
+}) {
+  return (
+    <div className="theme-toggle" role="group" aria-label="Theme">
+      <button
+        type="button"
+        onClick={() => onChange("dark")}
+        aria-pressed={theme === "dark"}
+      >
+        <span className={theme === "dark" ? "active" : undefined}>dark</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange("light")}
+        aria-pressed={theme === "light"}
+      >
+        <span className={theme === "light" ? "active" : undefined}>light</span>
+      </button>
+    </div>
+  );
+}
 
-    </main>
+function SectionTitle({ path, label }: { path: string; label: string }) {
+  return (
+    <h2 className="section-title">
+      <span className="section-title-path">{path}</span>
+      <span className="section-title-label">{label}</span>
+    </h2>
   );
 }
 
 function Stat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="min-w-[88px] rounded-xl border border-[var(--line)] bg-[var(--bg-elevated)] px-3 py-2">
-      <div className="text-[10px] tracking-wider text-[var(--muted)] uppercase">
-        {label}
-      </div>
-      <div
-        className="text-2xl font-semibold"
-        style={{ fontFamily: "var(--font-display), sans-serif" }}
-      >
-        {value}
-      </div>
+    <div className="min-w-[72px] border border-[var(--line)] bg-[var(--bg)] px-2.5 py-2 sm:px-3">
+      <div className="stat-label">{label}</div>
+      <div className="stat-value mt-1 sm:text-2xl">{value}</div>
     </div>
   );
 }
@@ -459,8 +545,8 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <label className="flex flex-col gap-1.5 text-xs text-[var(--muted)]">
-      <span>{label}</span>
+    <label className="flex flex-col gap-1.5">
+      <span className="label-pixel text-[var(--muted)]">{label}</span>
       {children}
     </label>
   );

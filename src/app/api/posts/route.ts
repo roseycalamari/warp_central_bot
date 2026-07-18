@@ -9,10 +9,15 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export async function GET() {
-  const posts = await prisma.post.findMany({
-    orderBy: [{ scheduledAt: "asc" }, { createdAt: "desc" }],
-  });
-  return NextResponse.json({ posts });
+  try {
+    const posts = await prisma.post.findMany({
+      orderBy: [{ scheduledAt: "asc" }, { createdAt: "desc" }],
+    });
+    return NextResponse.json({ posts });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ posts: [], error: message }, { status: 503 });
+  }
 }
 
 export async function POST(req: NextRequest) {

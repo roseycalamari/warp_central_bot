@@ -1,23 +1,31 @@
 import type { Metadata } from "next";
-import { Syne, DM_Sans } from "next/font/google";
+import { Montserrat } from "next/font/google";
 import "./globals.css";
 
-const syne = Syne({
-  variable: "--font-display",
+const montserrat = Montserrat({
+  variable: "--font-sans",
   subsets: ["latin"],
-  weight: ["500", "600", "700", "800"],
-});
-
-const dmSans = DM_Sans({
-  variable: "--font-body",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["300", "400", "500", "600", "700"],
 });
 
 export const metadata: Metadata = {
-  title: "Warp Central — Instagram Moodboard Queue",
-  description: "Queue moodboard images and auto-post them to Instagram.",
+  title: "/warp central — instagram queue",
+  description: "Technical moodboard queue that auto-posts to Instagram.",
 };
+
+const themeBootScript = `
+(function () {
+  try {
+    var stored = localStorage.getItem('warp-theme');
+    var theme = stored === 'light' || stored === 'dark'
+      ? stored
+      : (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+    document.documentElement.setAttribute('data-theme', theme);
+  } catch (e) {
+    document.documentElement.setAttribute('data-theme', 'dark');
+  }
+})();
+`;
 
 export default function RootLayout({
   children,
@@ -25,8 +33,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${syne.variable} ${dmSans.variable} h-full`}>
-      <body className="min-h-full antialiased">{children}</body>
+    <html
+      lang="en"
+      className={`${montserrat.variable} h-full`}
+      data-theme="dark"
+      suppressHydrationWarning
+    >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
+      </head>
+      <body className="min-h-full antialiased" suppressHydrationWarning>
+        {children}
+      </body>
     </html>
   );
 }
