@@ -46,12 +46,46 @@ export default function HomePage() {
   const [startHour, setStartHour] = useState(9);
   const [endHour, setEndHour] = useState(21);
   const [everyMinutes, setEveryMinutes] = useState(45);
-  const [files, setFiles] = useState<FileList | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [filter, setFilter] = useState<
     "all" | "scheduled" | "draft" | "posted" | "failed"
   >("all");
   const [theme, setTheme] = useState<Theme>("dark");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [filePreviews, setFilePreviews] = useState<
+    { file: File; url: string }[]
+  >([]);
+
+  useEffect(() => {
+    const next = files.map((file) => ({
+      file,
+      url: URL.createObjectURL(file),
+    }));
+    setFilePreviews(next);
+    return () => {
+      for (const preview of next) URL.revokeObjectURL(preview.url);
+    };
+  }, [files]);
+
+  function addImageFiles(incoming: FileList | File[] | null) {
+    if (!incoming) return;
+    const next = Array.from(incoming).filter((f) =>
+      f.type.startsWith("image/"),
+    );
+    if (next.length === 0) return;
+    setFiles((prev) => [...prev, ...next]);
+  }
+
+  function removeFileAt(index: number) {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function clearFiles() {
+    setFiles([]);
+    const input = document.getElementById("images") as HTMLInputElement | null;
+    if (input) input.value = "";
+  }
 
   useEffect(() => {
     const current =
@@ -182,7 +216,7 @@ export default function HomePage() {
 
   async function onUpload(e: React.FormEvent) {
     e.preventDefault();
-    if (!files || files.length === 0) {
+    if (files.length === 0) {
       setMessage("error: no images selected");
       return;
     }
@@ -191,7 +225,7 @@ export default function HomePage() {
     setMessage(null);
     try {
       const form = new FormData();
-      Array.from(files).forEach((f) => form.append("images", f));
+      files.forEach((f) => form.append("images", f));
       form.set("caption", caption);
       form.set("mode", mode);
       form.set("day", day);
@@ -204,9 +238,7 @@ export default function HomePage() {
       if (!res.ok) throw new Error(data.error || "Upload failed");
 
       setMessage(`ok: queued ${data.count} image${data.count === 1 ? "" : "s"}`);
-      setFiles(null);
-      const input = document.getElementById("images") as HTMLInputElement | null;
-      if (input) input.value = "";
+      clearFiles();
       await load();
     } catch (err) {
       setMessage(
@@ -267,7 +299,7 @@ export default function HomePage() {
               <ThemeToggle theme={theme} onChange={applyTheme} />
               <button
                 type="button"
-                className="font-pixel text-[10px] tracking-wide text-[var(--muted)] uppercase hover:text-[var(--accent)]"
+                className="btn-text text-[10px]"
                 onClick={async () => {
                   await fetch("/api/auth/logout", { method: "POST" });
                   window.location.href = "/login";
@@ -316,27 +348,83 @@ export default function HomePage() {
               </p>
             </div>
 
-            <label className="flex cursor-pointer flex-col items-center justify-center gap-2 border border-dashed border-[var(--line)] bg-[var(--bg)] px-4 py-10 text-center transition hover:border-[var(--accent)] active:border-[var(--accent)]">
-              <span className="label-pixel text-[var(--accent)]">
-                // drop zone
-              </span>
-              <span className="text-sm font-medium">
-                {files?.length
-                  ? `${files.length} file${files.length === 1 ? "" : "s"} selected`
-                  : "tap / click to select images"}
-              </span>
-              <span className="text-[11px] text-[var(--muted)]">
-                png · jpg · webp · works on phone too
-              </span>
+            <div
+              className={`drop-zone ${dragOver ? "drop-zone-active" : ""}`}
+              onDragEnter={(e) => {
+                e.preventDefault();
+                setDragOver(true);
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOver(true);
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault();
+                if (e.currentTarget === e.target) setDragOver(false);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOver(false);
+                addImageFiles(e.dataTransfer.files);
+              }}
+            >
+              <label htmlFor="images" className="flex w-full cursor-pointer flex-col items-center gap-2">
+                <span className="label-pixel text-[var(--accent)]">
+                  // drop zone
+                </span>
+                <span className="text-sm font-medium">
+                  {files.length
+                    ? `${files.length} image${files.length === 1 ? "" : "s"} ready`
+                    : "drop images here · or tap to select"}
+                </span>
+                <span className="text-[11px] text-[var(--muted)]">
+                  png · jpg · webp · works on phone too
+                </span>
+              </label>
               <input
                 id="images"
                 type="file"
                 accept="image/*"
                 multiple
                 className="sr-only"
-                onChange={(e) => setFiles(e.target.files)}
+                onChange={(e) => {
+                  addImageFiles(e.target.files);
+                  e.target.value = "";
+                }}
               />
-            </label>
+
+              {filePreviews.length > 0 && (
+                <div className="mt-3 flex w-full flex-col items-center gap-3">
+                  <div className="file-preview-grid">
+                    {filePreviews.map((preview, index) => (
+                      <div key={`${preview.file.name}-${index}`} className="file-preview-item">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={preview.url} alt={preview.file.name} />
+                        <button
+                          type="button"
+                          className="file-preview-remove"
+                          aria-label={`Remove ${preview.file.name}`}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            removeFileAt(index);
+                          }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-text btn-text-danger text-[10px]"
+                    onClick={clearFiles}
+                  >
+                    clear selection
+                  </button>
+                </div>
+              )}
+            </div>
 
             <label className="flex flex-col gap-2 text-xs">
               <span className="label-pixel text-[var(--muted)]">caption</span>
@@ -599,7 +687,7 @@ export default function HomePage() {
                             type="button"
                             disabled={busyId === post.id}
                             onClick={() => void postNow(post.id)}
-                            className="font-pixel text-xs tracking-wide text-[var(--accent)] uppercase disabled:opacity-50"
+                            className="btn-text btn-text-accent text-xs"
                           >
                             {busyId === post.id ? "..." : "post now"}
                           </button>
@@ -609,7 +697,7 @@ export default function HomePage() {
                           type="button"
                           disabled={busyId === post.id}
                           onClick={() => void unschedulePost(post.id)}
-                          className="font-pixel text-xs tracking-wide text-[var(--muted)] uppercase hover:text-[var(--warn)] disabled:opacity-50"
+                          className="btn-text btn-text-warn text-xs"
                         >
                           unschedule
                         </button>
@@ -618,7 +706,7 @@ export default function HomePage() {
                         <button
                           type="button"
                           onClick={() => void retryPost(post.id)}
-                          className="font-pixel text-xs tracking-wide text-[var(--accent)] uppercase"
+                          className="btn-text btn-text-accent text-xs"
                         >
                           retry
                         </button>
@@ -627,7 +715,7 @@ export default function HomePage() {
                         <button
                           type="button"
                           onClick={() => void deletePost(post.id)}
-                          className="font-pixel text-xs tracking-wide text-[var(--muted)] uppercase hover:text-[var(--danger)]"
+                          className="btn-text btn-text-danger text-xs"
                         >
                           delete local
                         </button>
@@ -637,7 +725,7 @@ export default function HomePage() {
                           <button
                             type="button"
                             onClick={() => void deletePost(post.id)}
-                            className="font-pixel text-xs tracking-wide text-[var(--muted)] uppercase hover:text-[var(--danger)]"
+                            className="btn-text btn-text-danger text-xs"
                           >
                             delete
                           </button>
