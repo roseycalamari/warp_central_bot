@@ -260,6 +260,9 @@ export default function HomePage() {
               <legend className="mb-1 label-pixel text-[var(--muted)]">
                 schedule mode
               </legend>
+              <p className="text-xs text-[var(--muted)] sm:text-sm">
+                Choose how the selected photos get timed for Instagram.
+              </p>
               <div className="flex flex-wrap gap-2">
                 {(
                   [
@@ -280,49 +283,68 @@ export default function HomePage() {
               </div>
 
               {mode === "bulk_day" && (
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <Field label="day">
-                    <input
-                      type="date"
-                      value={day}
-                      onChange={(e) => setDay(e.target.value)}
-                      className="field text-sm"
-                    />
-                  </Field>
-                  <Field label="start_hour">
-                    <input
-                      type="number"
-                      min={0}
-                      max={23}
-                      value={startHour}
-                      onChange={(e) => setStartHour(Number(e.target.value))}
-                      className="field text-sm"
-                    />
-                  </Field>
-                  <Field label="end_hour">
-                    <input
-                      type="number"
-                      min={1}
-                      max={23}
-                      value={endHour}
-                      onChange={(e) => setEndHour(Number(e.target.value))}
-                      className="field text-sm"
-                    />
-                  </Field>
-                </div>
+                <>
+                  <p className="border border-[var(--line)] bg-[var(--bg)] px-3 py-2 text-xs leading-relaxed text-[var(--muted)]">
+                    Spaces your photos evenly across one day — e.g. 20 photos
+                    from 9:00 to 21:00. Best for a full content day.
+                  </p>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <Field label="day">
+                      <input
+                        type="date"
+                        value={day}
+                        onChange={(e) => setDay(e.target.value)}
+                        className="field text-sm"
+                      />
+                    </Field>
+                    <Field label="start_hour">
+                      <input
+                        type="number"
+                        min={0}
+                        max={23}
+                        value={startHour}
+                        onChange={(e) => setStartHour(Number(e.target.value))}
+                        className="field text-sm"
+                      />
+                    </Field>
+                    <Field label="end_hour">
+                      <input
+                        type="number"
+                        min={1}
+                        max={23}
+                        value={endHour}
+                        onChange={(e) => setEndHour(Number(e.target.value))}
+                        className="field text-sm"
+                      />
+                    </Field>
+                  </div>
+                </>
               )}
 
               {mode === "stagger" && (
-                <Field label="interval_minutes">
-                  <input
-                    type="number"
-                    min={5}
-                    max={180}
-                    value={everyMinutes}
-                    onChange={(e) => setEveryMinutes(Number(e.target.value))}
-                    className="field text-sm"
-                  />
-                </Field>
+                <>
+                  <p className="border border-[var(--line)] bg-[var(--bg)] px-3 py-2 text-xs leading-relaxed text-[var(--muted)]">
+                    Starts soon, then posts one after another every N minutes.
+                    Good for a quick test or a short burst.
+                  </p>
+                  <Field label="minutes between posts">
+                    <input
+                      type="number"
+                      min={5}
+                      max={180}
+                      value={everyMinutes}
+                      onChange={(e) => setEveryMinutes(Number(e.target.value))}
+                      className="field text-sm"
+                    />
+                  </Field>
+                </>
+              )}
+
+              {mode === "draft" && (
+                <p className="border border-[var(--line)] bg-[var(--bg)] px-3 py-2 text-xs leading-relaxed text-[var(--muted)]">
+                  Saves photos without a publish time. You can schedule them
+                  later.
+                </p>
               )}
             </fieldset>
 
@@ -339,6 +361,13 @@ export default function HomePage() {
                 {publishing ? "publishing..." : "publish due now"}
               </button>
             </div>
+            <p className="text-[11px] leading-relaxed text-[var(--muted)]">
+              <strong className="text-[var(--ink)]">Add to queue</strong> only
+              saves/schedules.{" "}
+              <strong className="text-[var(--ink)]">Publish due now</strong>{" "}
+              sends anything whose time has already arrived (or wait for the
+              automatic cron timer).
+            </p>
 
             {message && (
               <p
