@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   AUTH_COOKIE,
-  sessionTokenForPassword,
+  buildSessionCookie,
   sitePasswordConfigured,
-  verifyPassword,
+  verifyLogin,
 } from "@/lib/auth";
 
 export const runtime = "nodejs";
@@ -17,15 +17,19 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => ({}));
+  const username = String(body.username || "");
   const password = String(body.password || "");
 
-  if (!verifyPassword(password)) {
-    return NextResponse.json({ error: "Wrong password" }, { status: 401 });
+  const user = verifyLogin(username, password);
+  if (!user) {
+    return NextResponse.json(
+      { error: "Wrong username or password" },
+      { status: 401 },
+    );
   }
 
-  const token = sessionTokenForPassword(password);
-  const res = NextResponse.json({ ok: true });
-  res.cookies.set(AUTH_COOKIE, token, {
+  const res = NextResponse.json({ ok: true, user });
+  res.cookies.set(AUTH_COOKIE, buildSessionCookie(user), {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",

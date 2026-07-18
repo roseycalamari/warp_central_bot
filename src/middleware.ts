@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const AUTH_COOKIE = "warp_session";
 
+const ALLOWED_USERS = ["andre", "ruben"] as const;
+
 function authSecret() {
   return (
     process.env.AUTH_SECRET?.trim() ||
@@ -38,10 +40,23 @@ function timingSafeEqualHex(a: string, b: string) {
   return out === 0;
 }
 
-async function expectedSessionToken() {
+function isAllowedUser(username: string): username is (typeof ALLOWED_USERS)[number] {
+  return (ALLOWED_USERS as readonly string[]).includes(username);
+}
+
+async function isValidSessionCookie(raw: string | undefined) {
   const password = process.env.SITE_PASSWORD?.trim();
-  if (!password) return null;
-  return hmacHex(`warp-central:${password}`);
+  if (!password || !raw) return false;
+
+  const dot = raw.indexOf(".");
+  if (dot <= 0 || dot === raw.length - 1) return false;
+
+  const username = raw.slice(0, dot).toLowerCase();
+  const token = raw.slice(dot + 1);
+  if (!isAllowedUser(username)) return false;
+
+  const expected = await hmacHex(`warp-central:v2:${username}:${password}`);
+  return timingSafeEqualHex(token, expected);
 }
 
 function hasValidCronSecret(req: NextRequest) {
@@ -53,15 +68,21 @@ function hasValidCronSecret(req: NextRequest) {
   return false;
 }
 
+function unauthorizedApi() {
+  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+}
+
+function redirectToLogin(req: NextRequest) {
+  const loginUrl = req.nextUrl.clone();
+  loginUrl.pathname = "/login";
+  loginUrl.searchParams.set("next", req.nextUrl.pathname);
+  return NextResponse.redirect(loginUrl);
+}
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // No password configured → open app (set SITE_PASSWORD on Vercel to lock it)
-  if (!process.env.SITE_PASSWORD?.trim()) {
-    return NextResponse.next();
-  }
-
-  // Public / system paths
+  // Public / system paths only (login itself + static assets)
   if (
     pathname.startsWith("/login") ||
     pathname.startsWith("/api/auth") ||
@@ -69,8 +90,7 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/fonts") ||
     pathname === "/favicon.ico" ||
     pathname === "/icon.png" ||
-    pathname === "/warp_logo.png" ||
-    pathname.startsWith("/uploads")
+    pathname === "/warp_logo.png"
   ) {
     return NextResponse.next();
   }
@@ -83,20 +103,27 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  const expected = await expectedSessionToken();
+  // No SITE_PASSWORD → lock the app (never leave it open via the link alone)
+  if (!process.env.SITE_PASSWORD?.trim()) {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json(
+        { error: "SITE_PASSWORD is not configured" },
+        { status: 503 },
+      );
+    }
+    return redirectToLogin(req);
+  }
+
   const cookie = req.cookies.get(AUTH_COOKIE)?.value;
-  if (expected && cookie && timingSafeEqualHex(cookie, expected)) {
+  if (await isValidSessionCookie(cookie)) {
     return NextResponse.next();
   }
 
   if (pathname.startsWith("/api/")) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return unauthorizedApi();
   }
 
-  const loginUrl = req.nextUrl.clone();
-  loginUrl.pathname = "/login";
-  loginUrl.searchParams.set("next", pathname);
-  return NextResponse.redirect(loginUrl);
+  return redirectToLogin(req);
 }
 
 export const config = {

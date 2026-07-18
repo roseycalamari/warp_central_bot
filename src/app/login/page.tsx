@@ -1,13 +1,13 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense } from "react";
 
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const next = params.get("next") || "/";
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -20,7 +20,7 @@ function LoginForm() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ username, password }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Login failed");
@@ -44,18 +44,32 @@ function LoginForm() {
           </span>
         </div>
         <p className="text-sm text-[var(--muted)]">
-          Password required to open the Instagram queue.
+          Sign in with your username and the shared password to open the queue.
         </p>
         <form onSubmit={onSubmit} className="flex flex-col gap-3">
+          <label className="flex flex-col gap-1.5">
+            <span className="label-pixel text-[var(--muted)]">username</span>
+            <input
+              type="text"
+              autoComplete="username"
+              autoFocus
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="field text-sm"
+              placeholder="andre or ruben"
+              required
+            />
+          </label>
           <label className="flex flex-col gap-1.5">
             <span className="label-pixel text-[var(--muted)]">password</span>
             <input
               type="password"
-              autoFocus
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="field text-sm"
               placeholder="••••••••"
+              required
             />
           </label>
           <button type="submit" disabled={loading} className="btn-primary">
