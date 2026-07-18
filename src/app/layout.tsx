@@ -11,6 +11,11 @@ const montserrat = Montserrat({
 export const metadata: Metadata = {
   title: "/warp central — instagram queue",
   description: "Technical moodboard queue that auto-posts to Instagram.",
+  icons: {
+    icon: [{ url: "/warp_logo.png", type: "image/png" }],
+    apple: [{ url: "/warp_logo.png", type: "image/png" }],
+    shortcut: "/warp_logo.png",
+  },
 };
 
 const themeBootScript = `

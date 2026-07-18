@@ -263,7 +263,19 @@ export default function HomePage() {
         <header className="panel flex flex-col gap-6 p-5 sm:p-7">
           <div className="flex items-start justify-between gap-3">
             <WarpLogo />
-            <ThemeToggle theme={theme} onChange={applyTheme} />
+            <div className="flex flex-col items-end gap-2">
+              <ThemeToggle theme={theme} onChange={applyTheme} />
+              <button
+                type="button"
+                className="font-pixel text-[10px] tracking-wide text-[var(--muted)] uppercase hover:text-[var(--accent)]"
+                onClick={async () => {
+                  await fetch("/api/auth/logout", { method: "POST" });
+                  window.location.href = "/login";
+                }}
+              >
+                logout
+              </button>
+            </div>
           </div>
 
           <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
