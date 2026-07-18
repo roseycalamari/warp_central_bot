@@ -1,36 +1,139 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Warp Central — Instagram Moodboard Queue (Vercel)
 
-## Getting Started
+Queue moodboard images online. A free external cron wakes the app every minute and posts what’s due to Instagram.
 
-First, run the development server:
+## How it works (simple)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+1. You open your Vercel site and upload photos.
+2. Photos are stored on **Vercel Blob** (public HTTPS links Meta can download).
+3. The schedule is saved in **Postgres** (Neon).
+4. Every minute, **cron-job.org** calls `/api/publish`.
+5. The app asks Meta’s Instagram API to publish the next due image(s).
+
+You do **not** leave your laptop on. You do **not** need ngrok.
+
+```
+You → Vercel website → Blob (photos) + Postgres (queue)
+                ↑
+         cron-job.org (every minute)
+                ↓
+         Meta → Instagram
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Credentials checklist (where to grab each)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Env var | What it is | Where to get it |
+|---------|------------|-----------------|
+| `DATABASE_URL` | Postgres connection string | [Neon](https://console.neon.tech) → Create project → **Connection string** (use the one with `sslmode=require`) |
+| `BLOB_READ_WRITE_TOKEN` | Token to upload photos | [Vercel](https://vercel.com) → your project → **Storage** → create **Blob** store → copy token into env vars (Vercel often adds this automatically) |
+| `CRON_SECRET` | Password so only your cron can hit publish | Invent one, e.g. run `openssl rand -hex 24` in a terminal |
+| `META_ACCESS_TOKEN` | Key that lets the app post as you | [Meta for Developers](https://developers.facebook.com) — see steps below |
+| `IG_USER_ID` | Your Instagram Business account number | Meta Graph API Explorer — see steps below |
+| `META_GRAPH_VERSION` | API version | Leave as `v21.0` unless Meta docs say otherwise |
 
-## Learn More
+### Meta token + Instagram ID (step by step)
 
-To learn more about Next.js, take a look at the following resources:
+1. Go to [developers.facebook.com](https://developers.facebook.com) → **My Apps** → **Create App** (type **Business**).
+2. Add the **Instagram** product / Instagram Graph API.
+3. Make sure your IG is **Professional (Business)** and linked to a **Facebook Page**.
+4. In **Graph API Explorer**:
+   - Select your app
+   - Get a User/Page token with permissions:
+     - `instagram_basic`
+     - `instagram_content_publish`
+     - `pages_show_list`
+     - `pages_read_engagement`
+5. Call `me/accounts` → open your Page → then  
+   `/{page-id}?fields=instagram_business_account`  
+   → copy the `id` → that is **`IG_USER_ID`**.
+6. Exchange for a **long-lived** token (Meta docs: long-lived page access token) → that is **`META_ACCESS_TOKEN`**.
+7. For real production posting beyond test users, submit **App Review** for `instagram_content_publish`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+---
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Push to GitHub → connect Vercel
 
-## Deploy on Vercel
+### 1. Push this repo
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+git add .
+git commit -m "Vercel-ready Instagram moodboard queue"
+git remote add origin https://github.com/YOUR_USER/warp_central.git   # if needed
+git push -u origin main
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### 2. Import on Vercel
+
+1. Go to [vercel.com/new](https://vercel.com/new)
+2. **Import** your GitHub repo
+3. Framework: Next.js (auto-detected)
+4. **Before Deploy**, add Environment Variables (Production):
+
+```
+DATABASE_URL=...
+BLOB_READ_WRITE_TOKEN=...
+CRON_SECRET=...
+META_ACCESS_TOKEN=...
+IG_USER_ID=...
+META_GRAPH_VERSION=v21.0
+```
+
+5. Click **Deploy**
+
+Tips:
+- Create the **Blob** store on the Vercel project first (Storage tab) so `BLOB_READ_WRITE_TOKEN` is available.
+- Create a free **Neon** database and paste `DATABASE_URL` before the first deploy (build runs `prisma db push`).
+
+### 3. Wire the free cron (required on Hobby)
+
+Vercel’s free (Hobby) plan only allows cron **once per day**, which is too rare for spaced posting.
+
+Use a free external cron instead:
+
+1. Go to [cron-job.org](https://cron-job.org) → create account
+2. Create job:
+   - URL: `https://YOUR-APP.vercel.app/api/publish?secret=YOUR_CRON_SECRET`  
+     (or send header `Authorization: Bearer YOUR_CRON_SECRET`)
+   - Schedule: every **1 minute**
+3. Save — leave it running forever
+
+That’s your “always-on bot.”
+
+---
+
+## Day-to-day use
+
+1. Open `https://YOUR-APP.vercel.app`
+2. Select ~20 moodboard images
+3. Choose **Spread across a day**
+4. Click **Add to queue**
+5. Walk away — cron + Meta do the rest
+
+Meta allows **100 API posts / 24 hours**. 20/day is fine.
+
+---
+
+## Local development (optional)
+
+Same env vars in `.env` (Neon + Blob tokens work from your laptop).
+
+```bash
+npm install
+npm run db:push
+npm run dev
+```
+
+Open http://localhost:3000
+
+---
+
+## Why not Vercel Cron every minute?
+
+| Plan | Cron frequency |
+|------|----------------|
+| Hobby (free) | Once per day only |
+| Pro | Every minute |
+
+This project uses **cron-job.org** so the free Vercel plan still works for 20 spaced posts/day.

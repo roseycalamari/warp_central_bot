@@ -1,0 +1,26 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Post {
+  id          String    @id @default(cuid())
+  caption     String    @default("")
+  /// Public HTTPS URL Meta will fetch (Vercel Blob)
+  imageUrl    String
+  status      String    @default("draft") // draft | scheduled | publishing | posted | failed
+  scheduledAt DateTime?
+  postedAt    DateTime?
+  containerId String?
+  igMediaId   String?
+  error       String?
+  attempts    Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status, scheduledAt])
+}
