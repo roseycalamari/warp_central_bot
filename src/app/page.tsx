@@ -127,6 +127,47 @@ export default function HomePage() {
     return () => clearInterval(id);
   }, [load]);
 
+  const overdueCount = useMemo(() => {
+    const now = Date.now();
+    return posts.filter(
+      (p) =>
+        p.status === "scheduled" &&
+        p.scheduledAt &&
+        new Date(p.scheduledAt).getTime() <= now,
+    ).length;
+  }, [posts]);
+
+  // While this page is open, keep publishing due posts (backup if external cron is missing)
+  useEffect(() => {
+    let cancelled = false;
+
+    async function tick() {
+      if (cancelled) return;
+      try {
+        const res = await fetch("/api/publish/manual", { method: "POST" });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return;
+        if (typeof data.processed === "number" && data.processed > 0) {
+          setMessage(
+            `ok: auto-posted ${data.processed} due post${data.processed === 1 ? "" : "s"}`,
+          );
+          await load();
+        }
+      } catch {
+        // ignore keepalive errors
+      }
+    }
+
+    // Run soon after load, then every minute
+    const first = setTimeout(() => void tick(), 2500);
+    const id = setInterval(() => void tick(), 60_000);
+    return () => {
+      cancelled = true;
+      clearTimeout(first);
+      clearInterval(id);
+    };
+  }, [load]);
+
   const stats = useMemo(() => {
     const counts = { scheduled: 0, posted: 0, failed: 0, draft: 0 };
     for (const p of posts) {
@@ -652,6 +693,7 @@ export default function HomePage() {
                   {f}
                   {f === "draft" && stats.draft ? ` ${stats.draft}` : ""}
                   {f === "failed" && stats.failed ? ` ${stats.failed}` : ""}
+                  {f === "scheduled" && overdueCount ? ` ${overdueCount} due` : ""}
                 </button>
               ))}
               {(stats.failed > 0 || stats.draft > 0) && (
@@ -676,6 +718,26 @@ export default function HomePage() {
               )}
             </div>
           </div>
+
+          {overdueCount > 0 && (
+            <div className="flex flex-col gap-2 border border-[var(--warn)] bg-[color-mix(in_srgb,var(--warn)_10%,transparent)] px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs leading-relaxed text-[var(--ink)] sm:text-sm">
+                <span className="font-pixel text-[var(--warn)]">!</span>{" "}
+                {overdueCount} post{overdueCount === 1 ? "" : "s"} overdue —
+                auto-publish should catch them while this tab is open. For
+                laptop-off posting, set up the GitHub Action (see README) or
+                cron-job.org.
+              </p>
+              <button
+                type="button"
+                className="btn-ghost shrink-0"
+                disabled={publishing}
+                onClick={() => void runPublishNow()}
+              >
+                {publishing ? "publishing..." : "publish due now"}
+              </button>
+            </div>
+          )}
 
           {loading ? (
             <p className="text-sm text-[var(--muted)]">loading...</p>

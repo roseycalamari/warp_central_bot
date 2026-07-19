@@ -86,20 +86,31 @@ Tips:
 - Create the **Blob** store on the Vercel project first (Storage tab) so `BLOB_READ_WRITE_TOKEN` is available.
 - Create a free **Neon** database and paste `DATABASE_URL` before the first deploy (build runs `prisma db push`).
 
-### 3. Wire the free cron (required on Hobby)
+### 3. Wire auto-publish (required — otherwise nothing posts by itself)
 
-Vercel’s free (Hobby) plan only allows cron **once per day**, which is too rare for spaced posting.
+Scheduling only saves times in the database. Something must wake the app to
+call `/api/publish`. Pick **one** (GitHub Action is easiest if the repo is already on GitHub):
 
-Use a free external cron instead:
+#### Option A — GitHub Actions (recommended)
+
+1. Open your GitHub repo → **Settings** → **Secrets and variables** → **Actions**
+2. **New repository secret**
+   - Name: `PUBLISH_URL`
+   - Value: `https://YOUR-APP.vercel.app/api/publish?secret=YOUR_CRON_SECRET`
+3. Open **Actions** tab → **Auto-publish due Instagram posts** → **Run workflow** once to test
+4. It will then run every **5 minutes** forever
+
+#### Option B — cron-job.org
 
 1. Go to [cron-job.org](https://cron-job.org) → create account
 2. Create job:
-   - URL: `https://YOUR-APP.vercel.app/api/publish?secret=YOUR_CRON_SECRET`  
-     (or send header `Authorization: Bearer YOUR_CRON_SECRET`)
+   - URL: `https://YOUR-APP.vercel.app/api/publish?secret=YOUR_CRON_SECRET`
    - Schedule: every **1 minute**
-3. Save — leave it running forever
+3. Save — leave it running
 
-That’s your “always-on bot.”
+While the Warp Central tab is open, the page also auto-publishes due posts every minute as a backup.
+
+Vercel Hobby’s built-in cron only runs about once per day (extra safety net only).
 
 ---
 

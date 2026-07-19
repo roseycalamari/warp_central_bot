@@ -64,6 +64,8 @@ function hasValidCronSecret(req: NextRequest) {
   if (!secret) return false;
   const header = req.headers.get("authorization");
   if (header === `Bearer ${secret}`) return true;
+  // Some Vercel setups expose the cron secret this way
+  if (req.headers.get("x-vercel-cron-secret") === secret) return true;
   if (req.nextUrl.searchParams.get("secret") === secret) return true;
   return false;
 }

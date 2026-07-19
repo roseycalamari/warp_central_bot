@@ -7,8 +7,9 @@ export const maxDuration = 60;
 /** UI "Publish due now" — no cron secret needed (personal tool). */
 export async function POST() {
   try {
-    const result = await publishDuePosts({ limit: 2 });
-    return NextResponse.json(result);
+    // Higher limit for manual / in-app keepalive catch-up
+    const result = await publishDuePosts({ limit: 5 });
+    return NextResponse.json({ ok: true, at: new Date().toISOString(), ...result });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: message }, { status: 500 });

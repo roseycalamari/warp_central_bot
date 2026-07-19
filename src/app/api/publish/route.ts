@@ -14,6 +14,10 @@ function authorized(req: NextRequest) {
   const header = req.headers.get("authorization");
   if (header === `Bearer ${secret}`) return true;
 
+  // Vercel Cron also sends this header on Hobby/Pro cron invocations
+  const cronHeader = req.headers.get("x-vercel-cron-secret");
+  if (cronHeader && cronHeader === secret) return true;
+
   const url = new URL(req.url);
   if (url.searchParams.get("secret") === secret) return true;
 
@@ -26,9 +30,38 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const published = await publishDuePosts({ limit: 2 });
-    const synced = await syncDeletedFromInstagram({ limit: 10 });
-    return NextResponse.json({ published, synced });
+    // 1 post per tick keeps Meta + Blob under cron timeouts (esp. cron-job.org ~30s)
+    const published = await publishDuePosts({ limit: 1 });
+
+    // Sync is secondary — never block publishing if IG checks are slow
+    let synced: Awaited<ReturnType<typeof syncDeletedFromInstagram>> | null =
+      null;
+    const minute = new Date().getUTCMinutes();
+    if (published.processed === 0 && minute % 15 === 0) {
+      try {
+        synced = await syncDeletedFromInstagram({ limit: 5 });
+      } catch (err) {
+        synced = {
+          checked: 0,
+          removed: 0,
+          kept: 0,
+          removedIds: [],
+          errors: [
+            {
+              id: "sync",
+              error: err instanceof Error ? err.message : String(err),
+            },
+          ],
+        };
+      }
+    }
+
+    return NextResponse.json({
+      ok: true,
+      at: new Date().toISOString(),
+      published,
+      synced,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: message }, { status: 500 });
