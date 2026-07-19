@@ -93,12 +93,13 @@ call `/api/publish`. Pick **one** (GitHub Action is easiest if the repo is alrea
 
 #### Option A — GitHub Actions (recommended)
 
-1. Open your GitHub repo → **Settings** → **Secrets and variables** → **Actions**
-2. **New repository secret**
+1. In GitHub, create file `.github/workflows/auto-publish.yml`
+2. Paste the contents from this repo’s `docs/auto-publish.workflow.yml`
+3. Repo → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**
    - Name: `PUBLISH_URL`
    - Value: `https://YOUR-APP.vercel.app/api/publish?secret=YOUR_CRON_SECRET`
-3. Open **Actions** tab → **Auto-publish due Instagram posts** → **Run workflow** once to test
-4. It will then run every **5 minutes** forever
+4. **Actions** tab → **Auto-publish due Instagram posts** → **Run workflow** once to test
+5. It then runs every **5 minutes** forever
 
 #### Option B — cron-job.org
 
