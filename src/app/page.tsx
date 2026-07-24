@@ -371,8 +371,8 @@ export default function HomePage() {
   return (
     <>
       <div className="scanlines" aria-hidden />
-      <main className="relative z-10 mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-6 sm:px-6 md:gap-10 md:py-10">
-        <header className="panel flex flex-col gap-6 p-5 sm:p-7">
+      <main className="relative z-10 mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-6 sm:px-6 md:gap-8 md:py-10">
+        <header className="panel flex flex-col gap-5 p-5 sm:p-7">
           <div className="flex items-start justify-between gap-3">
             <WarpLogo />
             <div className="flex flex-col items-end gap-2">
@@ -385,301 +385,216 @@ export default function HomePage() {
                   window.location.href = "/login";
                 }}
               >
-                logout
+                Log out
               </button>
             </div>
           </div>
 
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-            <p className="max-w-xl text-sm leading-relaxed text-[var(--muted)]">
-              <span className="text-[var(--accent)]">$</span> queue moodboard
-              images · auto-schedule · post to instagram
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <p className="text-sm text-[var(--muted)]">
+              Post moodboard images to{" "}
+              <span className="text-[var(--ink)]">@warp.central</span>
             </p>
-
             <div className="grid grid-cols-3 gap-2 sm:gap-3">
-              <Stat label="scheduled" value={stats.scheduled} />
+              <Stat label="queued" value={stats.scheduled} />
               <Stat label="posted" value={stats.posted} />
               <Stat label="failed" value={stats.failed} />
             </div>
           </div>
-
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-[var(--line)] pt-4 status-bar">
-            <span>
-              status<span className="text-[var(--accent)]">:</span> online
-            </span>
-            <span className="hidden sm:inline">|</span>
-            <span>
-              target<span className="text-[var(--accent)]">:</span> @warp.central
-            </span>
-            <span className="hidden sm:inline">|</span>
-            <span className="inline-flex items-center gap-1">
-              mode
-              <span className="text-[var(--accent)]">:</span> {theme}
-            </span>
-          </div>
         </header>
 
-        <section className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-          <form onSubmit={onUpload} className="panel flex flex-col gap-5 p-5 sm:p-6">
-            <div>
-              <SectionTitle path="/queue" label="ingest images" />
-              <p className="mt-2 text-xs text-[var(--muted)] sm:text-sm">
-                Multi-select photos. Compressed before upload, then queued for
-                Instagram (large batches send in small chunks).
-              </p>
-            </div>
+        <form onSubmit={onUpload} className="panel flex flex-col gap-5 p-5 sm:p-6">
+          <SectionTitle path="/new" label="new posts" />
 
-            <div
-              className={`drop-zone ${dragOver ? "drop-zone-active" : ""}`}
-              onDragEnter={(e) => {
-                e.preventDefault();
-                setDragOver(true);
-              }}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDragOver(true);
-              }}
-              onDragLeave={(e) => {
-                e.preventDefault();
-                if (e.currentTarget === e.target) setDragOver(false);
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                setDragOver(false);
-                addImageFiles(e.dataTransfer.files);
-              }}
+          <div
+            className={`drop-zone ${dragOver ? "drop-zone-active" : ""}`}
+            onDragEnter={(e) => {
+              e.preventDefault();
+              setDragOver(true);
+            }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragOver(true);
+            }}
+            onDragLeave={(e) => {
+              e.preventDefault();
+              if (e.currentTarget === e.target) setDragOver(false);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+              addImageFiles(e.dataTransfer.files);
+            }}
+          >
+            <label
+              htmlFor="images"
+              className="flex w-full cursor-pointer flex-col items-center gap-2"
             >
-              <label htmlFor="images" className="flex w-full cursor-pointer flex-col items-center gap-2">
-                <span className="label-pixel text-[var(--accent)]">
-                  // drop zone
-                </span>
-                <span className="text-sm font-medium">
-                  {files.length
-                    ? `${files.length} image${files.length === 1 ? "" : "s"} ready`
-                    : "drop images here · or tap to select"}
-                </span>
-                <span className="text-[11px] text-[var(--muted)]">
-                  png · jpg · webp · works on phone too
-                </span>
-              </label>
-              <input
-                id="images"
-                type="file"
-                accept="image/*"
-                multiple
-                className="sr-only"
-                onChange={(e) => {
-                  addImageFiles(e.target.files);
-                  e.target.value = "";
-                }}
-              />
-
-              {filePreviews.length > 0 && (
-                <div className="mt-3 flex w-full flex-col items-center gap-3">
-                  <div className="file-preview-grid">
-                    {filePreviews.map((preview, index) => (
-                      <div key={`${preview.file.name}-${index}`} className="file-preview-item">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={preview.url} alt={preview.file.name} />
-                        <button
-                          type="button"
-                          className="file-preview-remove"
-                          aria-label={`Remove ${preview.file.name}`}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            removeFileAt(index);
-                          }}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                  <button
-                    type="button"
-                    className="btn-text btn-text-danger text-[10px]"
-                    onClick={clearFiles}
-                  >
-                    clear selection
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <label className="flex flex-col gap-2 text-xs">
-              <span className="label-pixel text-[var(--muted)]">caption</span>
-              <textarea
-                value={caption}
-                onChange={(e) => setCaption(e.target.value)}
-                rows={3}
-                placeholder="// optional caption / hashtags"
-                className="field resize-y text-sm"
-              />
+              <span className="text-sm font-medium">
+                {files.length
+                  ? `${files.length} photo${files.length === 1 ? "" : "s"} selected`
+                  : "Drop photos here, or tap to choose"}
+              </span>
             </label>
+            <input
+              id="images"
+              type="file"
+              accept="image/*"
+              multiple
+              className="sr-only"
+              onChange={(e) => {
+                addImageFiles(e.target.files);
+                e.target.value = "";
+              }}
+            />
 
-            <fieldset className="grid gap-3">
-              <legend className="mb-1 label-pixel text-[var(--muted)]">
-                schedule mode
-              </legend>
-              <p className="text-xs text-[var(--muted)] sm:text-sm">
-                Choose how the selected photos get timed for Instagram.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {(
-                  [
-                    ["bulk_day", "spread day"],
-                    ["stagger", "every n min"],
-                    ["draft", "drafts"],
-                  ] as const
-                ).map(([value, label]) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setMode(value)}
-                    className={`chip ${mode === value ? "chip-active" : ""}`}
-                  >
-                    {label}
-                  </button>
-                ))}
+            {filePreviews.length > 0 && (
+              <div className="mt-3 flex w-full flex-col items-center gap-3">
+                <div className="file-preview-grid">
+                  {filePreviews.map((preview, index) => (
+                    <div
+                      key={`${preview.file.name}-${index}`}
+                      className="file-preview-item"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={preview.url} alt={preview.file.name} />
+                      <button
+                        type="button"
+                        className="file-preview-remove"
+                        aria-label={`Remove ${preview.file.name}`}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          removeFileAt(index);
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className="btn-text btn-text-danger text-[10px]"
+                  onClick={clearFiles}
+                >
+                  Clear photos
+                </button>
               </div>
-
-              {mode === "bulk_day" && (
-                <>
-                  <p className="border border-[var(--line)] bg-[var(--bg)] px-3 py-2 text-xs leading-relaxed text-[var(--muted)]">
-                    Spaces whatever you selected evenly across one day — upload
-                    12 photos → 12 slots, upload 20 → 20 slots. Number of posts =
-                    number of images you pick.
-                  </p>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    <Field label="day">
-                      <input
-                        type="date"
-                        value={day}
-                        onChange={(e) => setDay(e.target.value)}
-                        className="field text-sm"
-                      />
-                    </Field>
-                    <Field label="start_hour">
-                      <input
-                        type="number"
-                        min={0}
-                        max={23}
-                        value={startHour}
-                        onChange={(e) => setStartHour(Number(e.target.value))}
-                        className="field text-sm"
-                      />
-                    </Field>
-                    <Field label="end_hour">
-                      <input
-                        type="number"
-                        min={1}
-                        max={23}
-                        value={endHour}
-                        onChange={(e) => setEndHour(Number(e.target.value))}
-                        className="field text-sm"
-                      />
-                    </Field>
-                  </div>
-                </>
-              )}
-
-              {mode === "stagger" && (
-                <>
-                  <p className="border border-[var(--line)] bg-[var(--bg)] px-3 py-2 text-xs leading-relaxed text-[var(--muted)]">
-                    Starts in about 1 minute, then posts one after another every
-                    N minutes. Want it live immediately? Use{" "}
-                    <strong className="text-[var(--ink)]">post now</strong> on
-                    that card in the buffer. Minimum interval: 1 minute.
-                  </p>
-                  <Field label="minutes between posts">
-                    <input
-                      type="number"
-                      min={1}
-                      max={180}
-                      value={everyMinutes}
-                      onChange={(e) => setEveryMinutes(Number(e.target.value))}
-                      className="field text-sm"
-                    />
-                  </Field>
-                </>
-              )}
-
-              {mode === "draft" && (
-                <p className="border border-[var(--line)] bg-[var(--bg)] px-3 py-2 text-xs leading-relaxed text-[var(--muted)]">
-                  Saves photos without a publish time. You can schedule them
-                  later.
-                </p>
-              )}
-            </fieldset>
-
-            <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:flex-wrap">
-              <button type="submit" disabled={uploading} className="btn-primary">
-                {uploading ? "queuing..." : "add to queue"}
-              </button>
-              <button
-                type="button"
-                onClick={() => void runPublishNow()}
-                disabled={publishing}
-                className="btn-ghost"
-              >
-                {publishing ? "publishing..." : "publish due now"}
-              </button>
-            </div>
-            <p className="text-[11px] leading-relaxed text-[var(--muted)]">
-              <strong className="text-[var(--ink)]">Add to queue</strong> only
-              saves/schedules.{" "}
-              <strong className="text-[var(--ink)]">Publish due now</strong>{" "}
-              sends anything whose time has already arrived (or wait for the
-              automatic cron timer).
-            </p>
-
-            {message && (
-              <p
-                className={`border border-[var(--line)] bg-[var(--bg)] px-3 py-2 text-xs ${
-                  message.startsWith("error")
-                    ? "text-[var(--danger)]"
-                    : "text-[var(--ok)]"
-                }`}
-              >
-                {message}
-              </p>
             )}
-          </form>
+          </div>
 
-          <aside className="panel flex flex-col gap-4 p-5 sm:p-6">
-            <SectionTitle path="/sys" label="how it works" />
-            <div className="space-y-3 text-xs leading-relaxed text-[var(--muted)] sm:text-sm">
-              <p>
-                <span className="font-pixel text-[var(--accent)]">01</span> You
-                upload photos here (phone or computer). They get saved in cloud
-                storage (Vercel Blob).
-              </p>
-              <p>
-                <span className="font-pixel text-[var(--accent)]">02</span> You
-                choose when each one should go live. The schedule is saved in
-                our database (Postgres).
-              </p>
-              <p>
-                <span className="font-pixel text-[var(--accent)]">03</span> Every
-                minute, a free timer (cron) checks: “is anything due?”
-              </p>
-              <p>
-                <span className="font-pixel text-[var(--accent)]">04</span> If
-                yes, Meta’s Instagram API posts it to @warp.central
-                automatically.
-              </p>
+          <label className="flex flex-col gap-2 text-xs">
+            <span className="label-pixel text-[var(--muted)]">caption</span>
+            <textarea
+              value={caption}
+              onChange={(e) => setCaption(e.target.value)}
+              rows={2}
+              placeholder="Optional caption / hashtags"
+              className="field resize-y text-sm"
+            />
+          </label>
+
+          <fieldset className="grid gap-3">
+            <legend className="mb-1 label-pixel text-[var(--muted)]">
+              when to post
+            </legend>
+            <div className="flex flex-wrap gap-2">
+              {(
+                [
+                  ["bulk_day", "Spread over a day"],
+                  ["stagger", "Every few minutes"],
+                  ["draft", "Save as drafts"],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setMode(value)}
+                  className={`chip ${mode === value ? "chip-active" : ""}`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
-            <div className="mt-auto border-t border-[var(--line)] pt-4 text-[11px] leading-relaxed text-[var(--muted)]">
-              You don’t leave a laptop on. Meta allows up to 100 posts / day —
-              ~20 is safe.
-            </div>
-          </aside>
-        </section>
+
+            {mode === "bulk_day" && (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <Field label="day">
+                  <input
+                    type="date"
+                    value={day}
+                    onChange={(e) => setDay(e.target.value)}
+                    className="field text-sm"
+                  />
+                </Field>
+                <Field label="from hour">
+                  <input
+                    type="number"
+                    min={0}
+                    max={23}
+                    value={startHour}
+                    onChange={(e) => setStartHour(Number(e.target.value))}
+                    className="field text-sm"
+                  />
+                </Field>
+                <Field label="to hour">
+                  <input
+                    type="number"
+                    min={1}
+                    max={23}
+                    value={endHour}
+                    onChange={(e) => setEndHour(Number(e.target.value))}
+                    className="field text-sm"
+                  />
+                </Field>
+              </div>
+            )}
+
+            {mode === "stagger" && (
+              <Field label="minutes between each post">
+                <input
+                  type="number"
+                  min={1}
+                  max={180}
+                  value={everyMinutes}
+                  onChange={(e) => setEveryMinutes(Number(e.target.value))}
+                  className="field text-sm"
+                />
+              </Field>
+            )}
+          </fieldset>
+
+          <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:flex-wrap">
+            <button type="submit" disabled={uploading} className="btn-primary">
+              {uploading ? "Scheduling…" : "Schedule posts"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void runPublishNow()}
+              disabled={publishing}
+              className="btn-ghost"
+            >
+              {publishing ? "Posting…" : "Post overdue now"}
+            </button>
+          </div>
+
+          {message && (
+            <p
+              className={`border border-[var(--line)] bg-[var(--bg)] px-3 py-2 text-xs ${
+                message.startsWith("error")
+                  ? "text-[var(--danger)]"
+                  : "text-[var(--ok)]"
+              }`}
+            >
+              {message}
+            </p>
+          )}
+        </form>
 
         <section className="panel flex flex-col gap-5 p-5 sm:p-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <SectionTitle path="/queue" label="buffer" />
+            <SectionTitle path="/posts" label="your posts" />
             <div className="flex flex-wrap gap-2">
               {(
                 ["all", "scheduled", "draft", "posted", "failed"] as const
@@ -690,10 +605,12 @@ export default function HomePage() {
                   onClick={() => setFilter(f)}
                   className={`chip ${filter === f ? "chip-active" : ""}`}
                 >
-                  {f}
+                  {f === "scheduled" ? "queued" : f}
                   {f === "draft" && stats.draft ? ` ${stats.draft}` : ""}
                   {f === "failed" && stats.failed ? ` ${stats.failed}` : ""}
-                  {f === "scheduled" && overdueCount ? ` ${overdueCount} due` : ""}
+                  {f === "scheduled" && overdueCount
+                    ? ` ${overdueCount} due`
+                    : ""}
                 </button>
               ))}
               {(stats.failed > 0 || stats.draft > 0) && (
@@ -701,9 +618,8 @@ export default function HomePage() {
                   type="button"
                   onClick={() => void cleanupFailedAndDrafts()}
                   className="chip"
-                  title="Delete failed + draft posts and free cloud storage"
                 >
-                  clear failed/drafts
+                  Clear drafts & failed
                 </button>
               )}
               {stats.posted > 0 && (
@@ -711,9 +627,8 @@ export default function HomePage() {
                   type="button"
                   onClick={() => void syncInstagramDeleted()}
                   className="chip"
-                  title="Remove local posts that were deleted on Instagram"
                 >
-                  sync ig deletes
+                  Sync IG deletes
                 </button>
               )}
             </div>
@@ -721,12 +636,9 @@ export default function HomePage() {
 
           {overdueCount > 0 && (
             <div className="flex flex-col gap-2 border border-[var(--warn)] bg-[color-mix(in_srgb,var(--warn)_10%,transparent)] px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-xs leading-relaxed text-[var(--ink)] sm:text-sm">
-                <span className="font-pixel text-[var(--warn)]">!</span>{" "}
-                {overdueCount} post{overdueCount === 1 ? "" : "s"} overdue —
-                auto-publish should catch them while this tab is open. For
-                laptop-off posting, set up the GitHub Action (see README) or
-                cron-job.org.
+              <p className="text-sm text-[var(--ink)]">
+                {overdueCount} post{overdueCount === 1 ? "" : "s"} ready to go
+                live
               </p>
               <button
                 type="button"
@@ -734,16 +646,16 @@ export default function HomePage() {
                 disabled={publishing}
                 onClick={() => void runPublishNow()}
               >
-                {publishing ? "publishing..." : "publish due now"}
+                {publishing ? "Posting…" : "Post them now"}
               </button>
             </div>
           )}
 
           {loading ? (
-            <p className="text-sm text-[var(--muted)]">loading...</p>
+            <p className="text-sm text-[var(--muted)]">Loading…</p>
           ) : visible.length === 0 ? (
             <p className="border border-dashed border-[var(--line)] px-4 py-8 text-center text-sm text-[var(--muted)]">
-              // empty buffer — upload to begin
+              No posts yet — add photos above
             </p>
           ) : (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
@@ -766,7 +678,7 @@ export default function HomePage() {
                           color: STATUS_COLOR[post.status] || "var(--muted)",
                         }}
                       >
-                        {post.status}
+                        {post.status === "scheduled" ? "queued" : post.status}
                       </span>
                       <span className="font-pixel text-[10px] text-[var(--muted)] sm:text-xs">
                         {formatWhen(post.scheduledAt)}
@@ -791,7 +703,7 @@ export default function HomePage() {
                             onClick={() => void postNow(post.id)}
                             className="btn-text btn-text-accent text-xs"
                           >
-                            {busyId === post.id ? "..." : "post now"}
+                            {busyId === post.id ? "…" : "Post now"}
                           </button>
                         )}
                       {post.status === "scheduled" && (
@@ -801,7 +713,7 @@ export default function HomePage() {
                           onClick={() => void unschedulePost(post.id)}
                           className="btn-text btn-text-warn text-xs"
                         >
-                          unschedule
+                          Hold
                         </button>
                       )}
                       {post.status === "failed" && (
@@ -810,7 +722,7 @@ export default function HomePage() {
                           onClick={() => void retryPost(post.id)}
                           className="btn-text btn-text-accent text-xs"
                         >
-                          retry
+                          Retry
                         </button>
                       )}
                       {post.status === "posted" && (
@@ -819,7 +731,7 @@ export default function HomePage() {
                           onClick={() => void deletePost(post.id)}
                           className="btn-text btn-text-danger text-xs"
                         >
-                          delete local
+                          Remove here
                         </button>
                       )}
                       {post.status !== "posted" &&
@@ -829,7 +741,7 @@ export default function HomePage() {
                             onClick={() => void deletePost(post.id)}
                             className="btn-text btn-text-danger text-xs"
                           >
-                            delete
+                            Delete
                           </button>
                         )}
                     </div>
@@ -841,17 +753,16 @@ export default function HomePage() {
         </section>
 
         <footer className="status-bar pb-4 text-center">
-          /warp <span className="font-pixel">central</span>
+          Warp Central
           <span className="cursor-blink ml-1 inline-block h-2.5 w-[2px] align-middle bg-[var(--accent)]" />
         </footer>
       </main>
     </>
   );
 }
-
 function WarpLogo() {
   return (
-    <div className="warp-logo" aria-label="/warp central">
+    <div className="warp-logo" aria-label="Warp Central">
       <span className="warp-logo-top">/warp</span>
       <span className="warp-logo-bottom">
         <span className="warp-logo-central">central</span>

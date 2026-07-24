@@ -44,7 +44,7 @@ function LoginForm() {
           </span>
         </div>
         <p className="text-sm text-[var(--muted)]">
-          Sign in with your username and the shared password to open the queue.
+          Sign in to Warp Central
         </p>
         <form onSubmit={onSubmit} className="flex flex-col gap-3">
           <label className="flex flex-col gap-1.5">

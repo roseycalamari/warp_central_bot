@@ -92,6 +92,9 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/fonts") ||
     pathname === "/favicon.ico" ||
     pathname === "/icon.png" ||
+    pathname === "/apple-icon.png" ||
+    pathname === "/favicon-32.png" ||
+    pathname === "/apple-touch-icon.png" ||
     pathname === "/warp_logo.png"
   ) {
     return NextResponse.next();
