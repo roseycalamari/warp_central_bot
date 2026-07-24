@@ -45,7 +45,7 @@ export default function HomePage() {
   const [publishing, setPublishing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [caption, setCaption] = useState("");
-  const [mode, setMode] = useState<"bulk_day" | "stagger" | "draft">("bulk_day");
+  const [mode, setMode] = useState<"bulk_day" | "stagger">("bulk_day");
   const [day, setDay] = useState(() => new Date().toISOString().slice(0, 10));
   const [startHour, setStartHour] = useState(9);
   const [endHour, setEndHour] = useState(21);
@@ -313,9 +313,7 @@ export default function HomePage() {
         `ok: queued ${queued} image${queued === 1 ? "" : "s"}` +
           (mode === "stagger"
             ? ` · every ${everyMinutes} min`
-            : mode === "bulk_day"
-              ? " · spread across day"
-              : " · as drafts"),
+            : " · spread across day"),
       );
       clearFiles();
       await load();
@@ -504,7 +502,6 @@ export default function HomePage() {
                 [
                   ["bulk_day", "Spread over a day"],
                   ["stagger", "Every few minutes"],
-                  ["draft", "Save as drafts"],
                 ] as const
               ).map(([value, label]) => (
                 <button
