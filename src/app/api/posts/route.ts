@@ -20,6 +20,23 @@ export async function GET() {
   }
 }
 
+function parseClientTimes(raw: FormDataEntryValue | null, expected: number) {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(String(raw)) as unknown;
+    if (!Array.isArray(parsed) || parsed.length !== expected) return null;
+    const times = parsed.map((value) => {
+      if (value == null || value === "") return null;
+      const date = new Date(String(value));
+      return Number.isNaN(date.getTime()) ? null : date;
+    });
+    if (times.every((t) => t === null)) return null;
+    return times;
+  } catch {
+    return null;
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const form = await req.formData();
@@ -43,6 +60,7 @@ export async function POST(req: NextRequest) {
     const singleAt = form.get("scheduledAt")
       ? new Date(String(form.get("scheduledAt")))
       : null;
+    const clientTimes = parseClientTimes(form.get("scheduledAts"), files.length);
 
     if (files.length === 0) {
       return NextResponse.json({ error: "No images uploaded" }, { status: 400 });
@@ -58,53 +76,87 @@ export async function POST(req: NextRequest) {
     const saved: { imageUrl: string; originalName: string }[] = [];
 
     for (const file of files) {
-      const buf = Buffer.from(await file.arrayBuffer());
-      const jpeg = await sharp(buf)
-        .rotate()
-        .resize({
-          width: 1440,
-          height: 1440,
-          fit: "inside",
-          withoutEnlargement: true,
-        })
-        .jpeg({ quality: 90, mozjpeg: true })
-        .toBuffer();
+      const name = file.name || "image";
+      if (/\.heic$|\.heif$/i.test(name) || /heic|heif/i.test(file.type || "")) {
+        return NextResponse.json(
+          {
+            error: `"${name}" is HEIC/HEIF. Export as JPG/PNG/WebP, then schedule again.`,
+          },
+          { status: 400 },
+        );
+      }
+
+      let jpeg: Buffer;
+      try {
+        const buf = Buffer.from(await file.arrayBuffer());
+        jpeg = await sharp(buf)
+          .rotate()
+          .resize({
+            width: 1440,
+            height: 1440,
+            fit: "inside",
+            withoutEnlargement: true,
+          })
+          .jpeg({ quality: 90, mozjpeg: true })
+          .toBuffer();
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        return NextResponse.json(
+          {
+            error: `Could not process "${name}". Use JPG/PNG/WebP. (${detail})`,
+          },
+          { status: 400 },
+        );
+      }
 
       const filename = `moodboard/${randomUUID()}.jpg`;
-      const blob = await put(filename, jpeg, {
-        access: "public",
-        contentType: "image/jpeg",
-        addRandomSuffix: false,
-      });
+      let blob;
+      try {
+        blob = await put(filename, jpeg, {
+          access: "public",
+          contentType: "image/jpeg",
+          addRandomSuffix: false,
+        });
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        return NextResponse.json(
+          { error: `Cloud upload failed for "${name}": ${detail}` },
+          { status: 500 },
+        );
+      }
 
-      saved.push({ imageUrl: blob.url, originalName: file.name });
+      saved.push({ imageUrl: blob.url, originalName: name });
     }
 
-    let allTimes: (Date | null)[] = [];
+    let batchTimes: (Date | null)[] = [];
 
-    if (mode === "draft") {
-      allTimes = Array.from({ length: batchTotal }, () => null);
+    if (clientTimes) {
+      batchTimes = clientTimes;
+    } else if (mode === "draft") {
+      batchTimes = saved.map(() => null);
     } else if (
       mode === "single" &&
       singleAt &&
       !Number.isNaN(singleAt.getTime())
     ) {
-      allTimes = Array.from({ length: batchTotal }, () => singleAt);
+      batchTimes = saved.map(() => singleAt);
     } else if (mode === "stagger") {
-      allTimes = staggerFromNow(batchTotal, everyMinutes);
+      const allTimes = staggerFromNow(batchTotal, everyMinutes);
+      batchTimes = saved.map((_, i) => allTimes[batchStartIndex + i] ?? null);
     } else {
       const day = dayStr ? new Date(`${dayStr}T12:00:00`) : new Date();
-      allTimes = buildDaySchedule({
+      const allTimes = buildDaySchedule({
         count: batchTotal,
         day,
         startHour,
         endHour,
       });
+      batchTimes = saved.map((_, i) => allTimes[batchStartIndex + i] ?? null);
     }
 
     const posts = await prisma.$transaction(
       saved.map((s, i) => {
-        const scheduledAt = allTimes[batchStartIndex + i] ?? null;
+        const scheduledAt = batchTimes[i] ?? null;
         return prisma.post.create({
           data: {
             caption,

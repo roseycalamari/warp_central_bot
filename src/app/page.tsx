@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   compressImageForUpload,
+  packUploadBatches,
   parseApiJson,
 } from "@/lib/compress-image";
+import { buildUploadSchedule } from "@/lib/schedule";
 
 type Theme = "dark" | "light";
 
@@ -74,9 +76,21 @@ export default function HomePage() {
 
   function addImageFiles(incoming: FileList | File[] | null) {
     if (!incoming) return;
-    const next = Array.from(incoming).filter((f) =>
-      f.type.startsWith("image/"),
-    );
+    const next = Array.from(incoming).filter((f) => {
+      if (!f.type.startsWith("image/") && !/\.(jpe?g|png|webp|gif)$/i.test(f.name)) {
+        return false;
+      }
+      if (/\.heic$|\.heif$/i.test(f.name) || /heic|heif/i.test(f.type)) {
+        return false;
+      }
+      return true;
+    });
+    const skipped = Array.from(incoming).length - next.length;
+    if (skipped > 0) {
+      setMessage(
+        `error: skipped ${skipped} unsupported file(s). Use JPG/PNG/WebP (not HEIC).`,
+      );
+    }
     if (next.length === 0) return;
     setFiles((prev) => [...prev, ...next]);
   }
@@ -269,7 +283,9 @@ export default function HomePage() {
     setUploading(true);
     setMessage(null);
     try {
-      setMessage(`preparing ${files.length} image${files.length === 1 ? "" : "s"}...`);
+      setMessage(
+        `preparing ${files.length} image${files.length === 1 ? "" : "s"}...`,
+      );
       const prepared: File[] = [];
       for (let i = 0; i < files.length; i++) {
         prepared.push(await compressImageForUpload(files[i]));
@@ -278,14 +294,24 @@ export default function HomePage() {
         }
       }
 
-      // Stay under Vercel's ~4.5MB request limit (phone photos blow past it in one shot)
-      const BATCH_SIZE = 3;
-      let queued = 0;
+      // Compute the full schedule once in the browser (local timezone + stable across batches)
+      const schedule = buildUploadSchedule({
+        count: prepared.length,
+        mode,
+        dayStr: day,
+        startHour,
+        endHour,
+        everyMinutes,
+      });
 
-      for (let start = 0; start < prepared.length; start += BATCH_SIZE) {
-        const batch = prepared.slice(start, start + BATCH_SIZE);
+      const batches = packUploadBatches(prepared);
+      let queued = 0;
+      let cursor = 0;
+
+      for (const batch of batches) {
+        const slice = schedule.slice(cursor, cursor + batch.length);
         setMessage(
-          `uploading ${Math.min(start + batch.length, prepared.length)}/${prepared.length}...`,
+          `uploading ${Math.min(cursor + batch.length, prepared.length)}/${prepared.length}...`,
         );
 
         const form = new FormData();
@@ -296,10 +322,17 @@ export default function HomePage() {
         form.set("startHour", String(startHour));
         form.set("endHour", String(endHour));
         form.set("everyMinutes", String(everyMinutes));
-        form.set("batchStartIndex", String(start));
+        form.set("batchStartIndex", String(cursor));
         form.set("batchTotal", String(prepared.length));
+        form.set(
+          "scheduledAts",
+          JSON.stringify(slice.map((d) => d.toISOString())),
+        );
 
         const res = await fetch("/api/posts", { method: "POST", body: form });
+        if (res.status === 401) {
+          throw new Error("Session expired — log in again, then retry.");
+        }
         const data = await parseApiJson(res);
         if (!res.ok) {
           throw new Error(
@@ -307,6 +340,7 @@ export default function HomePage() {
           );
         }
         queued += typeof data.count === "number" ? data.count : batch.length;
+        cursor += batch.length;
       }
 
       setMessage(
@@ -437,7 +471,7 @@ export default function HomePage() {
             <input
               id="images"
               type="file"
-              accept="image/*"
+              accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp"
               multiple
               className="sr-only"
               onChange={(e) => {
